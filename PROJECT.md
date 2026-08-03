@@ -79,7 +79,7 @@ exceptions, or database fields. It is passed as a `#[\SensitiveParameter]` and
 scrubbed from stack traces.
 
 After verification, the local AIO Rewards account is created using the *new*
-AIO Rewards password (Argon2id via `bcrypt`/Laravel's hasher).
+AIO Rewards password (Argon2id via Laravel's hasher).
 
 The verification contract is designed to be adaptable so the provider can
 later support verification via registered email or one-time token without
@@ -94,49 +94,24 @@ breaking the contract shape.
 - A referral is *actively* allocated only when `released_at IS NULL`.
 - A referral may have multiple historical released allocations but **at most
   one active allocation at a time**.
-- When a pending/available/claimed reward is voided because one underlying
-  referral was refunded:
-  - Release the active allocations belonging to unaffected sibling referrals
-    (`released_at = now`, `release_reason = 'sibling_referral_voided'`).
-  - Sibling referrals become eligible for future reward cycles.
-  - The refunded referral is marked `voided` and cannot be reused.
-  - All allocation and reward-transaction history is preserved.
-- Uniqueness is enforced under the ambassador row lock inside the service
-  layer: a partial-unique index on `referral_id WHERE released_at IS NULL` is
-  emulated via a `SELECT ... FOR UPDATE` guard plus a defensive check inside
-  the milestone/void services. (MySQL 8 lacks true partial unique indexes; a
-  generated-column workaround will be reviewed in Phase 6.)
+- Enforcement is done under the ambassador row lock inside the service layer.
 
 ### 3.3 Reward cycle identifier (Correction 3)
 
 `Reward` gains a `cycle_number` integer, unique per
 `(ambassador_profile_id, reward_rule_id, cycle_number)`.
 
-- For `one_time_lifetime` rules, `cycle_number` is always `1`.
-- For `repeatable_cycle` rules, cycle numbers increase sequentially (1, 2,
-  3, ...).
-- Milestone evaluation calculates the next cycle number under the ambassador
-  row lock.
-- This unique constraint is part of the idempotency protection against
-  duplicate rewards. Uniqueness is enforced by a plain multi-column unique
-  index, not a mode-conditional constraint.
+- `one_time_lifetime` rules: `cycle_number` = 1.
+- `repeatable_cycle` rules: sequential 1, 2, 3, …
+- Enforced by a plain multi-column unique index (not mode-conditional).
 
 ### 3.4 Rejected reward handling (Correction 4)
 
-Admin rejection supports **two explicit outcomes**:
-
-**A. Reject and release allocations** — for incorrect payout details,
-accidental claims, or administrative corrections.
-- Active allocations are released.
-- Referrals return to the unallocated pool.
-- Immutable history preserved.
-
-**B. Reject and consume cycle** — for fraud, abuse, or programme violations.
-- Allocations remain consumed.
-- Reason + acting administrator recorded.
-
-Both actions require a reason and write to `RewardTransaction` **and**
-`AuditLog`.
+**A. Reject and release allocations** — for admin correction; active
+allocations are released, referrals return to the unallocated pool, history
+preserved. **B. Reject and consume cycle** — for fraud/abuse; allocations
+remain consumed. Both actions require a reason and are written to
+`RewardTransaction` **and** `AuditLog`.
 
 ---
 
@@ -144,131 +119,179 @@ Both actions require a reason and write to `RewardTransaction` **and**
 
 | Phase | Status | Description |
 |---|---|---|
-| 0 | ✅ **Complete** | Foundations — Laravel skeleton, Filament, Horizon, roles, MFA foundation, audit log, layouts, tests, tooling. |
-| 1 | Pending | Identity & Activation (secure verification, Ambassador role, referral code generation). |
+| 0 | ✅ **Complete + verified against production stack** | Foundations — Laravel skeleton, Filament v5 + mandatory MFA, Horizon, roles, audit log, Super Admin Artisan command, layouts, tests, tooling. |
+| 1 | Pending approval | Identity & Activation (secure verification, Ambassador role, referral code generation). |
 | 2 | Pending | Referral Tracking (`/r/{code}`, signed cookie, click log, attribution). |
 | 3 | Pending | Packages & Stripe Checkout (one-time payments, webhook signature, idempotency). |
-| 4 | Pending | Referral Conversions & Fulfilment (pending → approved after window). |
-| 5 | Pending | Refunds & Chargebacks (void unallocated referral; sibling release wiring). |
+| 4 | Pending | Referral Conversions & Fulfilment. |
+| 5 | Pending | Refunds & Chargebacks. |
 | 6 | Pending | Rewards Engine (cycle_number, ReferralAllocation history, MilestoneEvaluator). |
-| 7 | Pending | Notifications (mail + in-app). |
-| 8 | Pending | System Health & Hardening (health page, replay, headers, backups). |
-| 9 | Pending | Launch Readiness (Stripe live keys via `.env`, runbook). |
+| 7 | Pending | Notifications. |
+| 8 | Pending | System Health & Hardening. |
+| 9 | Pending | Launch Readiness. |
 
 ---
 
 ## 5. Database Decisions
 
-- **Primary DB:** MySQL 8 (production). SQLite (`:memory:` for automated tests,
-  `database/database.sqlite` for local dev).
-- **UUIDs / ULIDs:** ULIDs where sortable identifiers are useful
-  (`AuditLog` row IDs). Users retain incremental `bigint` primary keys.
-- **Timestamps:** UTC everywhere; `datetime(6)` where sub-second ordering
-  matters (Phase 6 onward).
+- **Primary DB:** MySQL 8 (production). MariaDB 10.6+ is wire-compatible for
+  the `mysql` Laravel driver and is used as the CI/dev fallback where MySQL 8
+  is impractical to install.
+- **Test DB:** two PHPUnit configurations are shipped:
+  - `phpunit.mysql.xml` — authoritative compatibility target.
+  - `phpunit.sqlite.xml` — fast local dev / CI smoke.
 - **Encrypted-at-rest columns:** `users.app_authentication_secret`,
-  `users.app_authentication_recovery_codes` (Filament v5 TOTP). Encryption is
-  application-level via Eloquent `encrypted` / `encrypted:array` casts,
-  keyed by `APP_KEY`.
-- **Append-only tables (planned):** `audit_logs` (this phase), `reward_transactions`,
-  `referral_allocations` (Phase 6). Application never issues `UPDATE` or
-  `DELETE`; a Phase 8 hardening ticket will remove those privileges from
-  the runtime DB user.
-- **Partial-unique constraints:** MySQL does not support partial unique
-  indexes; where needed, the constraint is enforced via row locks + service
-  discipline (see §3.2 and §3.3).
+  `users.app_authentication_recovery_codes` (Filament v5 TOTP).
+- **Append-only tables:** `audit_logs` (this phase). Reward tables in Phase 6.
+  Phase 8 hardening ticket will revoke `UPDATE` / `DELETE` on those tables
+  for the runtime DB user.
 
 ---
 
 ## 6. Security Decisions
 
-- **Authentication:** Laravel built-in guard (`web`), Argon2id password
-  hashing (`bcrypt` in `.env` maps to Laravel's hasher; hashing algorithm
-  configurable in `config/hashing.php`).
-- **Mandatory admin 2FA:** Filament v5 App (TOTP) MFA is registered as
-  **required** for the admin panel. Users must complete enrolment on first
-  login. Recovery codes supported.
+- **Authentication:** Laravel `web` guard, Argon2id via Laravel's hasher.
+- **Mandatory admin 2FA:** Filament v5 App (TOTP) MFA registered with
+  `isRequired: true`. Users must enrol on first login. Recovery codes
+  supported (`HasAppAuthenticationRecovery` implemented on `User`).
 - **Panel access:** `User::canAccessPanel()` requires `is_active = true` and
-  one of `support`, `admin`, or `super_admin` roles.
-- **Roles:** Enumerated in `App\Enums\Role`. Seeded idempotently by
-  `RolesAndPermissionsSeeder`.
-- **Horizon dashboard:** Super Admin only (`viewHorizon` gate + `Horizon::auth`
-  callback).
-- **Secrets:** Stripe secret key, Stripe webhook secret, and provider API
-  credentials **live in the server environment only**. They are never read
-  from or written to the database. Filament's System Health page (Phase 8)
-  reports only presence booleans and derived mode / connectivity — never
-  values, never masked values, no reveal UI.
-- **Sensitive parameters:** The provider password on the activation form is
-  passed with `#[\SensitiveParameter]` so it is scrubbed from stack traces and
-  logs (implemented in Phase 1).
-- **Audit log:** Central `App\Support\Audit\AuditLogger::record()` entry
-  point. No secrets are ever passed to it; enforced by code review.
-- **Session:** Signed, encrypted cookies. Secure + HttpOnly + SameSite=Lax in
-  production (`SESSION_SECURE_COOKIE=true`).
+  one of `support`, `admin`, `super_admin` roles.
+- **Horizon dashboard:** Super Admin only.
+- **Super Admin bootstrap:** Interactive `php artisan aio:make-super-admin` —
+  no default password in `.env`, never logs or persists the plaintext.
+- **Secrets policy:** Stripe secret key, Stripe webhook secret and provider
+  API credentials live **exclusively in the server environment**. They are
+  never read from or written to the database. Filament's Phase 8 System
+  Health page will report only presence booleans, derived mode, and
+  connectivity — never values.
+- **Sensitive parameters:** provider password (Phase 1 onward) is
+  `#[\SensitiveParameter]`-tagged.
+- **Audit log:** central `App\Support\Audit\AuditLogger::record()`. Never
+  receives secrets.
 
 ---
 
-## 7. Configuration & Secrets Policy
+## 7. Super Admin Bootstrap
 
-- **`.env` / server environment:** all secrets, all environment-bound values.
-  `.env.example` in the repo declares placeholders only.
-- **`config/*.php`:** code-level defaults, read from `env()`. Committed.
-- **`settings` table (Phase 8):** non-secret operational knobs (approval
-  window, attribution window, default reward rule, rate limits, fraud
-  thresholds). Filament-editable by Super Admin. Every write appends an
-  `AuditLog` entry.
-- **Rotation:** Secret rotation is a deployment-time operation: edit `.env`,
-  `php artisan config:cache`, `php artisan horizon:terminate`. There is no
-  in-application secret UI.
-
----
-
-## 8. Testing Status
-
-Phase 0 test suite (all green):
-
-| Suite | Tests | Result |
-|---|---|---|
-| `Tests\Unit\ExampleTest` | 1 | pass |
-| `Tests\Feature\WelcomePageTest` | 1 | pass |
-| `Tests\Feature\Auth\RolesFoundationTest` | 5 | pass |
-| `Tests\Feature\Audit\AuditLogTest` | 2 | pass |
-| **Total** | **9 (16 assertions)** | **PASS** |
-
-Static analysis: **PHPStan (Larastan) level 6** — 0 errors on `app/`, `config/`,
-`database/seeders/`, `routes/`.
-
-Code style: **Laravel Pint** with `pint.json` preset — 0 issues on 39 files.
-
----
-
-## 9. Deployment Notes
-
-**Target:** one standard Linux VPS.
-
-Required services:
-- Nginx + PHP-FPM 8.4
-- MySQL 8
-- Redis (cache / queue / session)
-- Horizon (systemd or Supervisor)
-- Certbot for TLS
-- Nightly encrypted MySQL dump to off-VPS storage
-
-Not required for v1: Docker, Kubernetes, Vapor, read replicas,
-Prometheus/Grafana, multi-region.
-
-The project is a standard portable Laravel 12 codebase. It does **not**
-introduce any proprietary Emergent runtime dependencies. It can be cloned
-from GitHub and run on any host that meets the requirements above using:
-
+```bash
+php artisan aio:make-super-admin
 ```
-composer install --no-dev --optimize-autoloader
-cp .env.example .env       # then edit .env
+
+Interactive prompts:
+1. **Name**
+2. **Email**
+3. **Password** (hidden, min 12 chars) + **Confirm password** (hidden)
+
+Behaviour:
+- Fails with a clear message if `roles` / `users` tables are missing
+  (run `php artisan migrate` first) or if the `super_admin` role is not
+  seeded (run `php artisan db:seed --class=RolesAndPermissionsSeeder`).
+- Creates or **updates** the user by email (idempotent — safe to re-run).
+- Assigns the `super_admin` role if not already assigned.
+- Auto-verifies the email.
+- Sets `is_active = true`.
+- The plaintext password is used only to compute the hash and is never
+  logged, exceptioned, cached, queued, or persisted.
+
+On the first `/admin/login` the user is redirected to the mandatory TOTP
+enrolment page and must complete enrolment (and record recovery codes)
+before entering the panel.
+
+---
+
+## 8. Local Installation
+
+**System requirements:** Linux (or macOS/WSL2), PHP 8.4 CLI + FPM,
+Composer 2.x, MySQL 8 (or MariaDB 10.6+), Redis 7+.
+
+```bash
+git clone <your-fork-url> aio-rewards
+cd aio-rewards
+composer install
+cp .env.example .env
 php artisan key:generate
+```
+
+Edit `.env` — set `DB_*` and `REDIS_*` to point at your local services.
+
+```bash
+php artisan migrate --seed
+php artisan aio:make-super-admin        # interactive
+php artisan horizon &                   # in a second terminal
+php artisan serve                       # http://127.0.0.1:8000
+```
+
+The admin panel is at `http://127.0.0.1:8000/admin/login`. On first login,
+the Super Admin is redirected to `/admin/multi-factor-authentication/set-up`
+to enrol TOTP and save recovery codes before the panel is accessible.
+
+---
+
+## 9. Production Requirements
+
+- Linux VPS (Debian 12 / Ubuntu 24.04 LTS or similar).
+- Nginx + PHP-FPM 8.4 with extensions: `mbstring`, `xml`, `curl`, `zip`,
+  `bcmath`, `intl`, `gd`, `mysql`, `redis`, `tokenizer`.
+- MySQL 8.
+- Redis 7+.
+- Horizon under **systemd** or **Supervisor** (sample unit file to be added
+  in Phase 8).
+- Certbot for TLS.
+- Nightly encrypted MySQL dump to off-VPS storage.
+
+Deploy:
+
+```bash
+composer install --no-dev --optimize-autoloader
+php artisan config:cache route:cache view:cache
 php artisan migrate --force
 php artisan db:seed --class=RolesAndPermissionsSeeder --force
-php artisan config:cache route:cache view:cache
-php artisan horizon &      # (behind supervisor in production)
+php artisan aio:make-super-admin        # interactive; done once
+php artisan horizon:terminate           # supervisor restarts it
 ```
 
-See `README.md` for the full local development quick-start.
+Secret rotation: edit `.env`, then
+`php artisan config:cache && php artisan horizon:terminate`.
+
+---
+
+## 10. Testing Status (Phase 0)
+
+Two authoritative test runs, both green:
+
+| Suite | Config | Tests | Result |
+|---|---|---|---|
+| Full suite (MySQL/MariaDB) | `phpunit.mysql.xml` | 15 (59 assertions) | ✅ PASS |
+| Full suite (SQLite in-memory) | `phpunit.sqlite.xml` | 15 (59 assertions) | ✅ PASS |
+
+Individual test files:
+- `Tests\Unit\ExampleTest` (1)
+- `Tests\Feature\WelcomePageTest` (1)
+- `Tests\Feature\Auth\RolesFoundationTest` (5)
+- `Tests\Feature\Audit\AuditLogTest` (2)
+- `Tests\Feature\Console\MakeSuperAdminCommandTest` (6)
+
+Static analysis: **PHPStan (Larastan) level 6** — 0 errors.
+Code style: **Laravel Pint** — 0 issues on 40 files.
+
+Production stack verification:
+- ✅ MySQL wire-compat (MariaDB 10.11.18) — 7 migrations + seeder green.
+- ✅ Redis 7.0.15 — PING + roundtrip confirmed.
+- ✅ Horizon — starts, reports `INFO Horizon is running.`, dispatches and
+  processes a `HorizonHealthProbeJob` end-to-end, terminates cleanly.
+
+---
+
+## 11. Deployment Notes
+
+Verified against **MariaDB 10.11.18** during Phase 0 checks. The Debian 12
+container used for verification does not ship Oracle MySQL 8 packages for
+ARM64; MariaDB 10.11 was used as an officially-supported MySQL wire-compatible
+substitute. Production **must** target MySQL 8 (schema uses only standard
+`mysql` PDO features; no `SPATIAL`, no MySQL-specific JSON functions in
+Phase 0). Phase 6 will re-verify against MySQL 8 before schema features that
+diverge (partial-unique emulation, generated columns) land.
+
+The project is a standard portable Laravel 12 codebase. It does **not**
+introduce any proprietary Emergent runtime dependencies. It can be exported
+to any Git host and deployed anywhere the requirements in §9 are met.

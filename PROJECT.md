@@ -119,16 +119,37 @@ remain consumed. Both actions require a reason and are written to
 
 | Phase | Status | Description |
 |---|---|---|
-| 0 | ✅ **Complete + verified against production stack** | Foundations — Laravel skeleton, Filament v5 + mandatory MFA, Horizon, roles, audit log, Super Admin Artisan command, layouts, tests, tooling. |
-| 1 | Pending approval | Identity & Activation (secure verification, Ambassador role, referral code generation). |
+| 0 | ✅ Complete + verified | Foundations, Filament v5 + MFA, Horizon, roles, audit log, Super Admin command. |
+| 1 | ✅ Complete | Identity & Activation — secure verification, Ambassador role, referral code generation, welcome/verify email, public activation page, ambassador login/logout/reset, ambassador dashboard, Filament AmbassadorResource. |
 | 2 | Pending | Referral Tracking (`/r/{code}`, signed cookie, click log, attribution). |
-| 3 | Pending | Packages & Stripe Checkout (one-time payments, webhook signature, idempotency). |
+| 3 | Pending | Packages & Stripe Checkout. |
 | 4 | Pending | Referral Conversions & Fulfilment. |
 | 5 | Pending | Refunds & Chargebacks. |
-| 6 | Pending | Rewards Engine (cycle_number, ReferralAllocation history, MilestoneEvaluator). |
+| 6 | Pending | Rewards Engine. |
 | 7 | Pending | Notifications. |
 | 8 | Pending | System Health & Hardening. |
 | 9 | Pending | Launch Readiness. |
+
+---
+
+## Phase 1 — Fake Provider Verification Rules
+
+When `PROVIDER_VERIFICATION_DRIVER=fake` (default in local/preview `.env`),
+the `FakeVerificationDriver` accepts the following test values:
+
+| Provider username | Provider password | Outcome |
+|---|---|---|
+| `test_active` | `letmein` | ✅ eligible → activation succeeds |
+| `test_inactive` | `letmein` | ❌ inactive → activation rejected |
+| `test_error` | *(any)* | ❌ provider outage simulation |
+| *(anything else)* | *(any)* | ❌ not_found |
+| `test_active` | *(wrong)* | ❌ wrong_credentials |
+
+Set `PROVIDER_VERIFICATION_DRIVER=aio_iptv_v1` in production `.env` and fill
+in `PROVIDER_VERIFICATION_URL` + `PROVIDER_VERIFICATION_KEY` to use the real
+driver.
+
+**No production secrets are committed to this repository.**
 
 ---
 

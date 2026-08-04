@@ -26,8 +26,17 @@
 
 ## Filament admin panel
 - URL: `/admin/login`
-- No admin user pre-seeded; create via `php artisan aio:make-super-admin`
-- Mandatory TOTP MFA on first login
+- Preview Super Admin (seeded in this session):
+  - Email: `preview-admin@example.com`
+  - Password: `AdminPass1234!`
+  - MFA: TOTP enforced on first login (an enrolment step happens automatically).
+- Create additional admins via `php artisan aio:make-super-admin` (interactive).
+
+## Packages (Phase 3 — Stripe checkout)
+- `/packages` lists three preview packages: `IPTV 12 Months £60`, `IPTV + VPN 12 Months £85`, `VPN Only 12 Months £35`.
+- Slugs used in checkout URLs: `iptv-12-months`, `iptv-vpn-12-months`, `vpn-only-12-months`.
+- End-to-end Stripe checkout requires `STRIPE_SECRET` in `.env`. If unset, the pay button
+  returns a friendly "Stripe is not configured on this environment" error.
 
 ## Preview base URL
 - `https://saas-architect-15.preview.emergentagent.com`

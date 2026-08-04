@@ -122,7 +122,7 @@ remain consumed. Both actions require a reason and are written to
 | 0 | ✅ Complete + verified | Foundations, Filament v5 + MFA, Horizon, roles, audit log, Super Admin command. |
 | 1 | ✅ Complete | Identity & Activation — secure verification, Ambassador role, referral code generation, welcome/verify email, public activation page, ambassador login/logout/reset, dashboard, Filament AmbassadorResource. |
 | 2 | ✅ Complete | Referral Tracking — `/r/{code}` click tracker, `ReferralClick` model with hashed IPs + UTM + bot flag, signed encrypted first-touch attribution cookie, rate limits (per IP + per code), upgraded ambassador dashboard (stats + recent clicks + WhatsApp share), read-only Filament ReferralClickResource with stats widget. |
-| 3 | Pending | Packages & Stripe Checkout. |
+| 3 | ✅ Complete | Packages, Buyer Details & Stripe Checkout — `Package`/`Purchase`/`StripeEvent` models, public `/packages` listing, `/checkout/{slug}/details` → `/review` → `/pay` flow, first-touch attribution stamped from `aior_ref` cookie, Stripe Checkout session (`mode: payment`) with `client_reference_id` + metadata, signed webhook endpoint with idempotency, Horizon-backed `ProcessStripeEventJob`, `StripeEventProcessor` handling `checkout.session.completed` / `payment_intent.*` / `charge.refunded` / `charge.dispute.created`, Filament `PackageResource` (CRUD) and read-only `PurchaseResource` with admin "Mark fulfilled" action. Verified ambassadors are auto-redirected past the email-verify prompt. |
 | 4 | Pending | Referral Conversions & Fulfilment. |
 | 5 | Pending | Refunds & Chargebacks. |
 | 6 | Pending | Rewards Engine. |

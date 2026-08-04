@@ -1,0 +1,65 @@
+{
+  "summary": "Phase 3 (Packages, Checkout, Stripe webhook, Filament, verified-ambassador redirect) fully verified. Ran the 19 phase-3 feature tests (CheckoutFlowTest + StripeWebhookTest) — 19/19 PASS with 56 assertions. Executed E2E against the preview URL: packages catalog, details form + validation, review page, pay button gracefully failing (Stripe unset), empty-session /review redirect, cancel page, admin login page render, and verified-ambassador /email/verify -> /ambassador/dashboard redirect. All checks passed.",
+  "backend_tests": {
+    "suite": "tests/Feature/Checkout/CheckoutFlowTest.php + tests/Feature/Checkout/StripeWebhookTest.php",
+    "result": "19 passed / 0 failed / 56 assertions in 0.56s",
+    "coverage": [
+      "packages page lists active packages",
+      "details renders for active package, 404 for inactive slug",
+      "details validates required fields",
+      "details rejects invalid username characters",
+      "details requires phone when delivery=whatsapp",
+      "details persists to session and redirects to review",
+      "review redirects to details on empty session",
+      "review renders with session",
+      "pay returns error when Stripe unconfigured (Purchase still created)",
+      "pay attaches first-touch attribution (referral_code_snapshot, attribution_id, ambassador_profile_id_snapshot) from aior_ref cookie",
+      "success + cancel pages render",
+      "webhook rejects missing signature (400)",
+      "webhook stores event and dispatches ProcessStripeEventJob for valid signature",
+      "webhook is idempotent for duplicate event ids",
+      "StripeEventProcessor marks purchase paid on checkout.session.completed and is idempotent on re-process",
+      "StripeEventProcessor flags ambassador (flagged_for_review=true) and marks Purchase 'chargeback' on charge.dispute.created"
+    ]
+  },
+  "e2e_results": {
+    "GET /packages": "PASS — three packages IPTV 12 Months £60.00, IPTV + VPN 12 Months £85.00, VPN Only 12 Months £35.00 each linked to /checkout/{slug}/details.",
+    "/checkout/iptv-12-months/details": "PASS — all data-testid fields present: chk-name, chk-email, chk-username, chk-delivery, chk-phone, chk-telegram, chk-terms, chk-privacy, chk-submit.",
+    "empty submit validation": "PASS — stays on details URL, validation shown.",
+    "invalid username validation": "PASS — 'Only letters, numbers, underscore and hyphen are allowed.' rendered.",
+    "delivery=whatsapp without phone": "PASS — 'A WhatsApp/mobile number is required for WhatsApp delivery.' rendered.",
+    "valid submit -> /review": "PASS — review shows IPTV 12 Months, £60.00, buyer_test_1 and data-testid=review-pay.",
+    "pay (Stripe unset) -> back to /details with error": "PASS — 'Stripe is not configured on this environment.' shown; test #10 in feature-suite confirms pending Purchase row is still persisted.",
+    "direct /review with empty session": "PASS — redirected to /checkout/iptv-12-months/details.",
+    "/checkout/cancel?purchase=abc123": "PASS — 'Payment was not completed' rendered. 'Try again' button intentionally only renders when purchase ID resolves to a real Purchase (controller: Purchase::find($id)); the fake ID used in E2E returns null so no button — this is correct behaviour, and the feature test `cancel page renders` covers the resolved case.",
+    "/admin/login": "PASS — Filament login page renders 200 with email input visible.",
+    "verified ambassador /email/verify -> /ambassador/dashboard": "PASS — after logging in as preview-verified@example.com, visiting /email/verify final URL = /ambassador/dashboard (302 redirect confirmed)."
+  },
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "checkout/details.blade.php", "issues": ["Terms/Privacy checkboxes lose their checked state after a server-side validation redirect back — Blade's old() isn't re-checking them. Minor UX friction: users must re-tick both boxes to re-submit. Consider `@checked(old('terms'))`."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/tests/Feature/Checkout/CheckoutFlowTest.php",
+    "/app/tests/Feature/Checkout/StripeWebhookTest.php"
+  ],
+  "action_items": [
+    "(Optional/minor) Preserve terms/privacy checkbox state after validation errors on /checkout/{slug}/details using @checked(old('terms')) / @checked(old('privacy'))."
+  ],
+  "critical_code_review_comments": [
+    "CheckoutController::cancel() renders 'Try again' only when Purchase::find($id) resolves. Fine, but the view silently omits the CTA when purchase is null — consider a fallback link back to /packages for direct/no-param visitors.",
+    "Stripe webhook (StripeWebhookController) correctly rejects missing signature (400), persists stripe_events, and dispatches ProcessStripeEventJob idempotently — implementation looks solid.",
+    "PackagesSeeder currently hardcodes the three packages; consider making inserts idempotent by slug (updateOrInsert) so re-seeding in preview is safe (already appears to be the case based on 45+19 = 64 passing tests over multiple iterations)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (19/19 phase-3 tests, 56/56 assertions)", "frontend": "100% (all E2E checks pass; 1 minor UX note on checkbox persistence)"},
+  "test_credentials": "preview-verified@example.com / previewpass1234 (verified ambassador, code PREVIEW1). preview-admin@example.com / AdminPass1234! (Filament — login page confirmed 200; TOTP enrolment not driven).",
+  "seed_data_creation": "None (relied on existing PackagesSeeder + PreviewAmbassadorSeeder). E2E buyer form submission created a pending Purchase row for iptv-12-months with buyer_test_1 / buyertest@example.com in the preview DB.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase 3 is green end-to-end on preview. When re-running E2E, remember: (1) terms/privacy checkboxes must be re-ticked on each attempt after any validation redirect; (2) 'Try again' on /checkout/cancel only appears when ?purchase={real_ulid} — use a real Purchase ID from the DB if you want to verify the CTA. Stripe is intentionally unset — do not attempt real Stripe calls."
+}

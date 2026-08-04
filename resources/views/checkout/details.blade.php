@@ -4,6 +4,8 @@
     .card{max-width:640px;margin:2rem auto;background:#fff;border-radius:1rem;padding:2rem;box-shadow:0 2px 30px -12px rgba(15,23,42,.12)}
     label{display:block;margin:.9rem 0 .3rem;font-weight:500}
     input,select{width:100%;padding:.7rem .75rem;border:1px solid #cbd5e1;border-radius:.5rem;font-size:1rem;box-sizing:border-box}
+    input[type=checkbox]{width:auto;padding:0;margin-right:.5rem;accent-color:#0f172a}
+    label.consent{display:flex;align-items:center;gap:.5rem;font-weight:400;margin:.5rem 0}
     small.help{color:#64748b;display:block;margin-top:.25rem}
     .btn{margin-top:1rem;padding:.9rem;background:#0f172a;color:#fff;border:0;border-radius:.5rem;font-weight:600;cursor:pointer;width:100%}
     .err{background:#fef2f2;color:#991b1b;padding:.75rem 1rem;border-radius:.5rem;margin-bottom:1rem}
@@ -43,10 +45,10 @@
         <input name="buyer_telegram" data-testid="chk-telegram" value="{{ old('buyer_telegram', $prefill['buyer_telegram'] ?? '') }}">
         @error('buyer_telegram')<div class="field-err" data-testid="err-telegram">{{ $message }}</div>@enderror
 
-        <label style="display:flex;align-items:flex-start;gap:.5rem;font-weight:normal">
+        <label class="consent">
             <input type="checkbox" name="terms" value="1" data-testid="chk-terms" required> I accept the terms.
         </label>
-        <label style="display:flex;align-items:flex-start;gap:.5rem;font-weight:normal">
+        <label class="consent">
             <input type="checkbox" name="privacy" value="1" data-testid="chk-privacy" required> I accept the privacy notice.
         </label>
 

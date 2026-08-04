@@ -11,8 +11,12 @@ use Illuminate\View\View;
 
 class EmailVerificationController extends Controller
 {
-    public function notice(): View
+    public function notice(Request $request): \Illuminate\Http\RedirectResponse|View
     {
+        if ($request->user()?->hasVerifiedEmail()) {
+            return redirect()->intended(route('ambassador.dashboard'));
+        }
+
         return view('auth.verify-email');
     }
 

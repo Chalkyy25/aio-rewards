@@ -3,7 +3,6 @@ cron=3.0pl1-162
 gnupg=2.2.40-1.1+deb12u2
 lsb-release=12.0-1
 mariadb-server=1:10.11.18-0+deb12u1
-mysql-apt-config=0.8.33-1
 php8.4-bcmath=8.4.23-1+0~20260703.52+debian12~1.gbp817a0c
 php8.4-cli=8.4.23-1+0~20260703.52+debian12~1.gbp817a0c
 php8.4-common=8.4.23-1+0~20260703.52+debian12~1.gbp817a0c

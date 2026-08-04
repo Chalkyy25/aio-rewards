@@ -23,3 +23,9 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+.env.*
+*.env
+credentials.json
+*.pem
+*.key
+.credentials

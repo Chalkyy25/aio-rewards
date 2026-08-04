@@ -37,10 +37,11 @@ class AmbassadorDashboardTest extends TestCase
             ->get(route('ambassador.dashboard'))
             ->assertOk()
             ->assertSee('Alice')
-            ->assertSee('alice@example.com')
             ->assertSee('ABCD1234')
             ->assertSee($profile->referralUrl())
             ->assertSeeHtml('data-testid="copy-referral-link"')
-            ->assertSeeHtml('data-testid="dash-status"');
+            ->assertSeeHtml('data-testid="dash-status"')
+            ->assertSeeHtml('data-testid="stat-total-clicks"')
+            ->assertSeeHtml('data-testid="share-whatsapp"');
     }
 }

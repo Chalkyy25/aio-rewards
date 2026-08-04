@@ -7,11 +7,16 @@
 - Login at: `/login`
 
 ## Fake provider verification driver values (for activation testing at `/activate`)
-- Provider username `test_active` + password `letmein` → ✅ eligible (activation succeeds)
+- Provider username `test_active` (legacy alias), `test_active_1`, `test_active_2`, `test_active_3` + password `letmein` → ✅ eligible (each activatable once)
 - Provider username `test_inactive` + password `letmein` → ❌ subscription inactive
 - Provider username `test_error` + any password → ❌ simulated provider outage
 - Any other username → ❌ not found
-- `test_active` + wrong password → ❌ wrong credentials
+- Valid username + wrong password → ❌ wrong credentials
+
+## Fake referral link (Phase 2)
+- `/r/PREVIEW1` — routes to the pre-seeded preview ambassador; sets `aior_ref` cookie; redirects to landing.
+- Query string honoured: `?utm_source=whatsapp&utm_medium=social&utm_campaign=launch`
+- Invalid or inactive code → 404 "Referral link unavailable" (no ambassador info leaked).
 
 ## New AIO Rewards account (for activation flow)
 - Any new email (not already used)

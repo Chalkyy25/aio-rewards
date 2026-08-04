@@ -47,6 +47,6 @@ class PreviewAmbassadorSeeder extends Seeder
             ]
         );
 
-        $this->command?->info("Preview ambassador ready: {$email} / previewpass1234 / PREVIEW1");
+        $this->command->info("Preview ambassador ready: {$email} / previewpass1234 / PREVIEW1");
     }
 }

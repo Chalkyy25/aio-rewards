@@ -120,8 +120,8 @@ remain consumed. Both actions require a reason and are written to
 | Phase | Status | Description |
 |---|---|---|
 | 0 | ✅ Complete + verified | Foundations, Filament v5 + MFA, Horizon, roles, audit log, Super Admin command. |
-| 1 | ✅ Complete | Identity & Activation — secure verification, Ambassador role, referral code generation, welcome/verify email, public activation page, ambassador login/logout/reset, ambassador dashboard, Filament AmbassadorResource. |
-| 2 | Pending | Referral Tracking (`/r/{code}`, signed cookie, click log, attribution). |
+| 1 | ✅ Complete | Identity & Activation — secure verification, Ambassador role, referral code generation, welcome/verify email, public activation page, ambassador login/logout/reset, dashboard, Filament AmbassadorResource. |
+| 2 | ✅ Complete | Referral Tracking — `/r/{code}` click tracker, `ReferralClick` model with hashed IPs + UTM + bot flag, signed encrypted first-touch attribution cookie, rate limits (per IP + per code), upgraded ambassador dashboard (stats + recent clicks + WhatsApp share), read-only Filament ReferralClickResource with stats widget. |
 | 3 | Pending | Packages & Stripe Checkout. |
 | 4 | Pending | Referral Conversions & Fulfilment. |
 | 5 | Pending | Refunds & Chargebacks. |
@@ -129,6 +129,22 @@ remain consumed. Both actions require a reason and are written to
 | 7 | Pending | Notifications. |
 | 8 | Pending | System Health & Hardening. |
 | 9 | Pending | Launch Readiness. |
+
+---
+
+## Phase 2 — Fake Provider Verification Rules (updated)
+
+Multiple reusable active accounts (each activatable ONCE — unique provider username enforced):
+
+| Provider username | Provider password | Outcome |
+|---|---|---|
+| `test_active` (legacy alias), `test_active_1`, `test_active_2`, `test_active_3` | `letmein` | ✅ eligible |
+| `test_inactive` | `letmein` | ❌ inactive |
+| `test_error` | any | ❌ simulated outage |
+| anything else | any | ❌ not found |
+| valid username | wrong password | ❌ wrong credentials |
+
+Wording on the activation form: "Your existing **AIO Media** username / password".
 
 ---
 

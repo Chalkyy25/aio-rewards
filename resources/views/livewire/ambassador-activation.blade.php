@@ -40,7 +40,7 @@
             <legend>Verify your existing subscription</legend>
 
             <div class="field">
-                <label for="provider_username">Your existing IPTV / VPN username</label>
+                <label for="provider_username">Your existing AIO Media username</label>
                 <input id="provider_username" data-testid="activate-provider-username"
                        type="text" wire:model="provider_username" autocomplete="username"
                        required>
@@ -50,7 +50,7 @@
             </div>
 
             <div class="field">
-                <label for="provider_password">Your existing IPTV / VPN password</label>
+                <label for="provider_password">Your existing AIO Media password</label>
                 <input id="provider_password" data-testid="activate-provider-password"
                        type="password" wire:model="provider_password" autocomplete="current-password"
                        required>

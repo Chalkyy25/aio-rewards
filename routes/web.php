@@ -5,10 +5,17 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\LogoutController;
 use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
+use App\Http\Controllers\ReferralClickController;
 use App\Livewire\AmbassadorActivation;
 use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'public.welcome')->name('home');
+Route::view('/packages', 'public.packages')->name('packages');
+
+/* ---- Referral tracker ---- */
+Route::get('/r/{code}', ReferralClickController::class)
+    ->where('code', '[A-Za-z0-9_-]{4,40}')
+    ->name('referral.click');
 
 /* ---- Public ambassador auth + activation ---- */
 Route::middleware('guest')->group(function () {

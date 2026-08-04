@@ -11,11 +11,18 @@ use App\Domain\Provider\Enums\VerificationFailureReason;
  * Development / test verification driver.
  *
  * Rules (case-insensitive username match):
- *   - "test_active"   + password "letmein" → eligible
- *   - "test_inactive" + password "letmein" → inactive
- *   - "test_error"    (any password)       → error (simulated outage)
+ *   - "test_active"    + password "letmein" → eligible (legacy alias)
+ *   - "test_active_1"  + password "letmein" → eligible
+ *   - "test_active_2"  + password "letmein" → eligible
+ *   - "test_active_3"  + password "letmein" → eligible
+ *   - "test_inactive"  + password "letmein" → inactive
+ *   - "test_error"     (any password)       → error (simulated outage)
  *   - Any other username → not_found
  *   - Correct username but wrong password → wrong_credentials
+ *
+ * Each active username is activatable only ONCE — AmbassadorProfile enforces
+ * a unique provider_username, so repeat activations of the same username are
+ * blocked at the DB / service layer, not by the fake driver.
  *
  * Additional runtime rules can be provided via constructor for targeted tests.
  */
@@ -29,7 +36,14 @@ class FakeVerificationDriver implements CustomerVerificationContract
     public function __construct(private array $rules = [])
     {
         $this->rules = array_change_key_case(array_merge([
+            // Legacy alias — the first "test_active" account, kept so existing
+            // documentation continues to work.
             'test_active' => ['password' => 'letmein', 'result' => 'eligible'],
+            // Reusable browser-testing accounts. Each can be activated ONCE
+            // because AmbassadorProfile enforces a unique provider_username.
+            'test_active_1' => ['password' => 'letmein', 'result' => 'eligible'],
+            'test_active_2' => ['password' => 'letmein', 'result' => 'eligible'],
+            'test_active_3' => ['password' => 'letmein', 'result' => 'eligible'],
             'test_inactive' => ['password' => 'letmein', 'result' => 'inactive'],
             'test_error' => ['password' => '__any__', 'result' => 'error'],
         ], $rules), CASE_LOWER);

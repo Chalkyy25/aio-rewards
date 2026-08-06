@@ -6,6 +6,7 @@ use App\Http\Controllers\Auth\LogoutController;
 use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
 use App\Http\Controllers\CheckoutController;
+use App\Http\Controllers\OrderStatusController;
 use App\Http\Controllers\ReferralClickController;
 use App\Http\Controllers\StripeWebhookController;
 use App\Livewire\AmbassadorActivation;
@@ -27,6 +28,11 @@ Route::get('/checkout/{slug}/review', [CheckoutController::class, 'review'])->na
 Route::post('/checkout/{slug}/pay', [CheckoutController::class, 'pay'])->middleware('throttle:10,1')->name('checkout.pay');
 Route::get('/checkout/success', [CheckoutController::class, 'success'])->name('checkout.success');
 Route::get('/checkout/cancel', [CheckoutController::class, 'cancel'])->name('checkout.cancel');
+
+// Public order status page — token is opaque, no PII in the URL.
+Route::get('/order/{token}', [OrderStatusController::class, 'show'])
+    ->where('token', '[A-Za-z0-9]{16,64}')
+    ->name('order.status');
 
 // Stripe webhook (no CSRF, no session)
 Route::post('/webhooks/stripe', StripeWebhookController::class)->name('webhooks.stripe');

@@ -2,10 +2,12 @@
 
 namespace App\Models;
 
+use App\Domain\Fulfilment\OrderStatus;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * @property string $id
@@ -27,8 +29,21 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property ?string $referral_code_snapshot
  * @property ?int $ambassador_profile_id_snapshot
  * @property ?\Illuminate\Support\Carbon $paid_at
+ * @property ?\Illuminate\Support\Carbon $payment_received_at
+ * @property ?\Illuminate\Support\Carbon $setup_started_at
+ * @property ?\Illuminate\Support\Carbon $awaiting_customer_at
+ * @property ?\Illuminate\Support\Carbon $completed_at
+ * @property ?\Illuminate\Support\Carbon $cancelled_at
+ * @property ?\Illuminate\Support\Carbon $refunded_at
  * @property ?\Illuminate\Support\Carbon $fulfilled_at
  * @property ?int $fulfilled_by_user_id
+ * @property ?string $provisioned_username_enc
+ * @property ?string $provisioned_password_enc
+ * @property ?\Illuminate\Support\Carbon $provisioned_expires_on
+ * @property ?string $setup_instructions_md
+ * @property ?array $download_links
+ * @property ?string $fulfilment_notes
+ * @property ?string $customer_view_token
  */
 class Purchase extends Model
 {
@@ -43,6 +58,15 @@ class Purchase extends Model
         'attribution_id', 'referral_code_snapshot', 'ambassador_profile_id_snapshot',
         'terms_accepted_at', 'privacy_accepted_at', 'paid_at', 'fulfilled_at',
         'fulfilled_by_user_id',
+        // Phase 4 fulfilment.
+        'provisioned_username_enc', 'provisioned_password_enc', 'provisioned_expires_on',
+        'setup_instructions_md', 'download_links', 'fulfilment_notes', 'customer_view_token',
+        'payment_received_at', 'setup_started_at', 'awaiting_customer_at',
+        'completed_at', 'cancelled_at', 'refunded_at',
+    ];
+
+    protected $hidden = [
+        'provisioned_password_enc',
     ];
 
     protected function casts(): array
@@ -52,6 +76,16 @@ class Purchase extends Model
             'privacy_accepted_at' => 'datetime',
             'paid_at' => 'datetime',
             'fulfilled_at' => 'datetime',
+            'payment_received_at' => 'datetime',
+            'setup_started_at' => 'datetime',
+            'awaiting_customer_at' => 'datetime',
+            'completed_at' => 'datetime',
+            'cancelled_at' => 'datetime',
+            'refunded_at' => 'datetime',
+            'provisioned_expires_on' => 'date',
+            'provisioned_username_enc' => 'encrypted',
+            'provisioned_password_enc' => 'encrypted',
+            'download_links' => 'array',
         ];
     }
 
@@ -67,6 +101,12 @@ class Purchase extends Model
         return $this->belongsTo(AmbassadorProfile::class, 'ambassador_profile_id_snapshot');
     }
 
+    /** @return HasOne<ReferralConversion, $this> */
+    public function referralConversion(): HasOne
+    {
+        return $this->hasOne(ReferralConversion::class, 'purchase_id');
+    }
+
     public function orderReference(): string
     {
         return 'AIO-'.strtoupper(substr($this->id, -8));
@@ -79,5 +119,37 @@ class Purchase extends Model
             'eur' => '€'.number_format($this->amount_minor / 100, 2),
             default => strtoupper($this->currency).' '.number_format($this->amount_minor / 100, 2),
         };
+    }
+
+    /**
+     * Human-friendly status label, tolerant of legacy enum values.
+     */
+    public function statusLabel(): string
+    {
+        $enum = OrderStatus::tryFrom((string) $this->fulfilment_status);
+
+        return $enum?->label() ?? match ($this->fulfilment_status) {
+            'unfulfilled' => 'Awaiting payment',
+            'fulfilled' => 'Completed',
+            default => 'Unknown',
+        };
+    }
+
+    public function statusColor(): string
+    {
+        $enum = OrderStatus::tryFrom((string) $this->fulfilment_status);
+        if ($enum) {
+            return $enum->color();
+        }
+
+        return match ($this->fulfilment_status) {
+            'fulfilled' => 'success',
+            default => 'gray',
+        };
+    }
+
+    public function currentStatus(): ?OrderStatus
+    {
+        return OrderStatus::tryFrom((string) $this->fulfilment_status);
     }
 }

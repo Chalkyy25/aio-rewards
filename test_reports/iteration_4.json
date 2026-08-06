@@ -1,0 +1,46 @@
+{
+  "summary": "Phase 4 (Order Management & Fulfilment) fully verified. Full PHPUnit suite: 78/78 passing (268 assertions, 2.27s) — including new FulfilmentFlowTest (8) + ConversionServiceTest (6). Filament resource discovery confirmed (5 resources). Route table verified. E2E on preview URL: /admin/login=200, /order/{unknown 32-char}=404, /order/short=404, /order/{token} on in_progress purchase renders timeline (Payment received + Setting up your account) WITHOUT credentials, then flipping the same record to fulfilment_status=completed reveals provisioned username, password, expiry, setup instructions, and both download links with data-testid=\"dl-link\". Confirmed at-rest encryption of provisioned_username_enc/provisioned_password_enc (raw DB cipher text differs from plaintext; accessor returns plaintext).",
+  "backend_tests": {
+    "command": "php artisan test",
+    "result": "78 passed / 0 failed / 268 assertions",
+    "new_phase4_suites": [
+      "Tests\\Feature\\Fulfilment\\FulfilmentFlowTest (8 tests)",
+      "Tests\\Feature\\Fulfilment\\ConversionServiceTest (6 tests)"
+    ]
+  },
+  "e2e_results": {
+    "GET /admin/login": "200 OK",
+    "GET /order/{unknown 32-char token}": "404",
+    "GET /order/short": "404",
+    "GET /order/{token} (in_progress)": "200 — shows 'Order', 'IPTV 12 Months', '£60', 'Payment received', 'Setting up' timeline; NO provisioned/username/password/dl-link markers present.",
+    "GET /order/{token} (completed)": "200 — reveals 'iptv_user_e2e', 'SecretPass!23', 'Completed', setup instructions ('Open the app...'), and two anchors with data-testid=\"dl-link\" (iOS App + Android APK).",
+    "encryption_at_rest": "Confirmed: raw provisioned_username_enc in DB begins 'eyJpdiI...' (base64 Laravel encrypted payload) != plaintext; Eloquent 'encrypted' cast returns 'iptv_user_e2e' via accessor."
+  },
+  "filament_resources_discovered": [
+    "AmbassadorResource","PackageResource","PurchaseResource (orders)","ReferralClickResource","ReferralConversionResource (referral-conversions)"
+  ],
+  "routes_confirmed": [
+    "GET admin/orders","GET admin/orders/{record}","GET admin/orders/{record}/edit",
+    "GET admin/referral-conversions","GET admin/referral-conversions/{record}",
+    "GET order/{token}"
+  ],
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/tests/Feature/Fulfilment/FulfilmentFlowTest.php",
+    "/app/tests/Feature/Fulfilment/ConversionServiceTest.php"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Model note: provisioned_username_enc / provisioned_password_enc are used both as the DB column name and as the model attribute (encrypted cast). Naming is slightly confusing — the attribute reads as plaintext via the accessor while the '_enc' suffix implies ciphertext. Consider virtual accessors like $purchase->provisioned_username backed by the '_enc' column to make callsites cleaner (this is cosmetic; encryption behaviour is correct).",
+    "Purchase table has both legacy Phase-3 columns (preferred_username, delivery_method, amount_minor) and Phase-4 additions. Manual creation via tinker requires knowing this — feature tests use factory helpers which is fine. No action required.",
+    "download_links stored as JSON (array cast) rendered as <a data-testid=\"dl-link\"> — verified in E2E."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (78/78, 268 assertions)", "frontend": "100% (all Phase-4 E2E checks pass)"},
+  "test_credentials": "preview-admin@example.com / AdminPass1234! (Filament login page renders 200; TOTP not driven). preview-verified@example.com / previewpass1234.",
+  "seed_data_creation": "Created one E2E Purchase (id 01kzb3z5nr55gby8a5f7yc5sy8, token 'a'x32) linked to iptv-12-months, transitioned in_progress -> completed with provisioned creds + 2 download links, verified public page, then deleted at cleanup.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase 4 is fully green. When recreating Purchase rows via tinker, use column names preferred_username, delivery_method, amount_minor (not buyer_username / delivery_channel / unit_price_pence). To reveal completed-state, assign to provisioned_username_enc / provisioned_password_enc directly (encrypted cast handles ciphering). Stripe remains unset — all webhook/event flows exercised offline via signed test payloads inside the feature suite."
+}

@@ -16,7 +16,11 @@
         </dl>
     @endif
     <p style="color:#94a3b8;font-size:.9rem">We do not activate instantly. You will receive a message with your login details once fulfilment is complete.</p>
+    @if ($purchase?->customer_view_token)
+        <a href="{{ route('order.status', ['token' => $purchase->customer_view_token]) }}" data-testid="success-status-link"
+           style="display:inline-block;margin-top:1rem;padding:.7rem 1.2rem;background:#0f172a;color:#fff;border-radius:.5rem;text-decoration:none;font-weight:600">Track your order</a>
+    @endif
     <a href="{{ url()->current().'?'.http_build_query(request()->query()) }}" data-testid="success-refresh"
-       style="display:inline-block;margin-top:1rem;padding:.6rem 1.2rem;background:#0f172a;color:#fff;border-radius:.5rem;text-decoration:none;font-weight:600">Refresh status</a>
+       style="display:inline-block;margin-top:1rem;margin-left:.5rem;padding:.6rem 1.2rem;background:#fff;color:#0f172a;border:1px solid #cbd5e1;border-radius:.5rem;text-decoration:none;font-weight:500">Refresh status</a>
 </div>
 @endsection

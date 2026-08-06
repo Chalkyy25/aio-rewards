@@ -26,6 +26,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Conversion approval window
+    |--------------------------------------------------------------------------
+    | A paid purchase from a referred visitor creates a `pending`
+    | ReferralConversion. After this many days without a refund/chargeback,
+    | the conversion becomes eligible for approval by an admin (or an
+    | automatic sweeper job in a later phase).
+    */
+    'conversion' => [
+        'refund_window_days' => (int) env('REFERRAL_REFUND_WINDOW_DAYS', 14),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Rate limits (per minute)
     |--------------------------------------------------------------------------
     */

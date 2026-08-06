@@ -52,19 +52,25 @@ Completed in this build:
   checkout flow, Stripe session creation, signed webhook, Horizon-backed
   event processor, Filament Package/Purchase resources, verified-user
   auto-redirect from verification prompt).
+- Phase 4 — Order Management & Fulfilment (rich fulfilment lifecycle with
+  seven statuses + per-transition timestamps, encrypted provisioned
+  credentials, `/order/{token}` public status page, Filament Orders
+  resource with edit-fulfilment form + status transition action, admin
+  new-order email notification, `ReferralConversion` model + service with
+  pending → approved / reversed lifecycle, Filament Conversions resource
+  with Approve / Reverse actions, auto-reverse on refund + chargeback).
 
-Tests: **64 passing** feature/unit tests (19 new for Phase 3 checkout +
-webhook + processor idempotency).
+Tests: **78 passing** feature/unit tests (14 new for Phase 4 — fulfilment
+transitions, encrypted credential storage, order status page visibility
+rules, admin notification, conversion pending/approve/reverse lifecycle).
 
 ## Backlog (prioritised)
 
 ### P1 — Next up
-- Phase 4: **Conversions & Fulfilment.** Create a `ReferralConversion` record
-  when a paid `Purchase` has an ambassador snapshot; admin fulfils the
-  upstream provisioning manually and marks the conversion approved after
-  the refund-window elapses.
-- Phase 5: **Refunds & Chargebacks.** Reverse an approved conversion,
-  claw back reward if applicable, flag ambassador for repeat abuse.
+- Phase 5: **Refunds & Chargebacks.** Broaden the existing auto-reverse
+  hooks — auto-approve conversions after the refund window elapses (queued
+  sweeper), surface a chargeback dashboard, and formalise the "flagged
+  ambassador" recovery workflow.
 - Phase 6: **Rewards Engine.** Rule table (`min_conversions`, `reward_type`,
   `reward_value`, `repeatable`), admin approve → mark paid, payouts log.
 

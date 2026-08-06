@@ -115,4 +115,14 @@ return [
         'name' => env('MAIL_FROM_NAME', env('APP_NAME', 'Laravel')),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Admin notification address
+    |--------------------------------------------------------------------------
+    | Address used for internal notifications (new orders, chargebacks, etc.).
+    | Falls back to the "from" address when unset. In production this should
+    | be a shared inbox (e.g. ops@aiomedia.example).
+    */
+    'admin_address' => env('MAIL_ADMIN_ADDRESS'),
+
 ];

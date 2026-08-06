@@ -41,6 +41,14 @@
 ## Preview base URL
 - `https://saas-architect-15.preview.emergentagent.com`
 
+## Customer order status page (Phase 4)
+- Public URL: `/order/{customer_view_token}` where token is a 32-char opaque
+  string generated when Stripe marks the checkout completed.
+- While the order is in progress the page shows the timeline only. Once the
+  admin marks the order **Completed** in Filament (`/admin/orders`), the
+  page reveals the provisioned username, password, expiry date, setup
+  instructions and any download links.
+
 Notes:
 - `MAIL_MAILER=log` → welcome & verification emails written to
   `storage/logs/laravel-*.log` (not sent). Grep the log for

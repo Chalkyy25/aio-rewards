@@ -17,7 +17,14 @@
     </dl>
 
     @if (request()->cookie(config('referrals.cookie.name', 'aior_ref')))
-        <div data-testid="review-referral-applied" style="margin:1rem 0;background:#dcfce7;color:#065f46;padding:.6rem 1rem;border-radius:.5rem">Referral applied.</div>
+        @php $refName = \App\Support\ReferralContext::referringName(); @endphp
+        <div data-testid="review-referral-applied" style="margin:1rem 0;background:#dcfce7;color:#065f46;padding:.6rem 1rem;border-radius:.5rem">
+            @if ($refName)
+                Referral applied — thanks to <strong data-testid="review-referral-name">{{ $refName }}</strong>.
+            @else
+                Referral applied.
+            @endif
+        </div>
     @endif
 
     <div style="display:flex;gap:.5rem;margin-top:1.5rem">

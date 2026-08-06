@@ -2,8 +2,13 @@
 @section('title', 'AIO Rewards — AIO Media, VPN & streaming')
 @section('content')
     @if (request()->cookie(config('referrals.cookie.name', 'aior_ref')))
+        @php $refName = \App\Support\ReferralContext::referringName(); @endphp
         <div data-testid="referral-badge" style="background:#dcfce7;color:#065f46;padding:.6rem 1rem;border-radius:.5rem;margin-bottom:1.5rem">
-            You were referred by an AIO Rewards ambassador. Complete your purchase to support them.
+            @if ($refName)
+                You were referred by <strong data-testid="referral-name">{{ $refName }}</strong>. Complete your purchase to support them.
+            @else
+                You were referred by an AIO Rewards ambassador. Complete your purchase to support them.
+            @endif
         </div>
     @endif
 

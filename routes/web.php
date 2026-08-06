@@ -5,6 +5,7 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\LogoutController;
 use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
+use App\Http\Controllers\AmbassadorDashboardController;
 use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\OrderStatusController;
 use App\Http\Controllers\ReferralClickController;
@@ -57,5 +58,5 @@ Route::middleware('auth')->group(function () {
 });
 
 Route::middleware(['auth', 'verified'])->prefix('ambassador')->name('ambassador.')->group(function () {
-    Route::view('/dashboard', 'ambassador.dashboard')->name('dashboard');
+    Route::get('/dashboard', [AmbassadorDashboardController::class, 'show'])->name('dashboard');
 });

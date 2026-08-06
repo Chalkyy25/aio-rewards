@@ -120,18 +120,55 @@
             </div>
             <div class="card">
                 <h2>Approved referrals</h2>
-                <div class="value" data-testid="stat-approved">0</div>
-                <div class="value-sub">After approval window (Phase 4+)</div>
+                <div class="value" data-testid="stat-approved">{{ number_format($stats['approved_conversions']) }}</div>
+                <div class="value-sub">Cleared refund window</div>
+            </div>
+        </div>
+
+        {{-- Rewards summary --}}
+        <div class="grid" style="margin-top:1rem" data-testid="rewards-summary">
+            <div class="card">
+                <h2>Pending reward</h2>
+                <div class="value" data-testid="reward-pending">£{{ number_format($stats['pending_reward_minor'] / 100, 2) }}</div>
+                <div class="value-sub">Awaiting admin approval</div>
+            </div>
+            <div class="card">
+                <h2>Approved reward</h2>
+                <div class="value" data-testid="reward-approved">£{{ number_format($stats['approved_reward_minor'] / 100, 2) }}</div>
+                <div class="value-sub">Ready for payout</div>
+            </div>
+            <div class="card">
+                <h2>Paid reward</h2>
+                <div class="value" data-testid="reward-paid">£{{ number_format($stats['paid_reward_minor'] / 100, 2) }}</div>
+                <div class="value-sub">Sent to you</div>
+            </div>
+            <div class="card">
+                <h2>Lifetime earned</h2>
+                <div class="value" data-testid="reward-lifetime">£{{ number_format($stats['lifetime_earned_minor'] / 100, 2) }}</div>
+                <div class="value-sub">Approved + paid</div>
             </div>
         </div>
 
         <div class="grid2">
             {{-- Reward progress --}}
             <div class="card">
-                <h2>Reward progress</h2>
-                <div class="value" data-testid="stat-progress">0 / 5</div>
-                <div class="progress"><div style="width:0%"></div></div>
-                <div class="value-sub">Every 5 approved referrals earns a reward (Phase 6+).</div>
+                <h2>Next milestone</h2>
+                @if ($stats['next_rule'])
+                    @php
+                        $pct = $stats['progress_target'] > 0
+                            ? min(100, round(($stats['progress_current'] / $stats['progress_target']) * 100))
+                            : 0;
+                    @endphp
+                    <div class="value" data-testid="milestone-progress">{{ $stats['progress_current'] }} / {{ $stats['progress_target'] }} referrals</div>
+                    <div class="progress"><div style="width:{{ $pct }}%"></div></div>
+                    <div class="value-sub" data-testid="milestone-remaining">
+                        {{ $stats['progress_remaining'] }} {{ \Illuminate\Support\Str::plural('referral', $stats['progress_remaining']) }}
+                        until your next {{ $stats['next_rule']->amountFormatted() }} reward.
+                    </div>
+                @else
+                    <div class="value" data-testid="milestone-progress">—</div>
+                    <div class="value-sub">No active reward rules yet.</div>
+                @endif
             </div>
 
             {{-- Status --}}

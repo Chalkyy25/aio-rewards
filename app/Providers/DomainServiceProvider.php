@@ -5,8 +5,11 @@ namespace App\Providers;
 use App\Domain\Provider\Contracts\CustomerVerificationContract;
 use App\Domain\Provider\Drivers\AioIptvVerificationDriver;
 use App\Domain\Provider\Drivers\FakeVerificationDriver;
+use App\Domain\Referrals\Events\ReferralConversionApproved;
+use App\Listeners\EvaluateRewardsForApprovedConversion;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Http\Client\Factory as HttpFactory;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use InvalidArgumentException;
 
@@ -33,5 +36,13 @@ class DomainServiceProvider extends ServiceProvider
                 default => throw new InvalidArgumentException("Unsupported driver class: {$config['class']}"),
             };
         });
+    }
+
+    public function boot(): void
+    {
+        Event::listen(
+            ReferralConversionApproved::class,
+            EvaluateRewardsForApprovedConversion::class,
+        );
     }
 }

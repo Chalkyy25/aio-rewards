@@ -4,6 +4,7 @@ namespace App\Domain\Billing;
 
 use App\Domain\Fulfilment\OrderFulfilmentService;
 use App\Domain\Fulfilment\OrderStatus;
+use App\Domain\Notifications\BuyerOrderNotifier;
 use App\Domain\Referrals\ConversionService;
 use App\Models\AmbassadorProfile;
 use App\Models\Purchase;
@@ -18,6 +19,7 @@ class StripeEventProcessor
     public function __construct(
         private readonly OrderFulfilmentService $fulfilment,
         private readonly ConversionService $conversions,
+        private readonly BuyerOrderNotifier $buyerNotifier,
     ) {}
 
     public function process(StripeEvent $event): void
@@ -62,13 +64,17 @@ class StripeEventProcessor
 
         // Enter the fulfilment lifecycle.
         $this->fulfilment->markPaymentReceived($purchase);
+        $purchase->refresh();
 
         // Create a pending referral conversion if this order was referred.
-        $this->conversions->createPendingFromPurchase($purchase->refresh());
+        $this->conversions->createPendingFromPurchase($purchase);
 
         // Notify admins that a new paid order needs fulfilment.
         Notification::route('mail', (string) config('mail.admin_address', config('mail.from.address')))
             ->notify(new AdminOrderReceivedNotification($purchase));
+
+        // Notify the buyer that their payment landed (idempotent).
+        $this->buyerNotifier->sendPaymentReceived($purchase);
 
         AuditLogger::record(action: 'purchase.paid', subject: $purchase, after: [
             'stripe_session_id' => $purchase->stripe_session_id,

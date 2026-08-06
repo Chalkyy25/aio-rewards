@@ -63,6 +63,7 @@ class Purchase extends Model
         'setup_instructions_md', 'download_links', 'fulfilment_notes', 'customer_view_token',
         'payment_received_at', 'setup_started_at', 'awaiting_customer_at',
         'completed_at', 'cancelled_at', 'refunded_at',
+        'payment_email_sent_at', 'completed_email_sent_at',
     ];
 
     protected $hidden = [
@@ -82,6 +83,8 @@ class Purchase extends Model
             'completed_at' => 'datetime',
             'cancelled_at' => 'datetime',
             'refunded_at' => 'datetime',
+            'payment_email_sent_at' => 'datetime',
+            'completed_email_sent_at' => 'datetime',
             'provisioned_expires_on' => 'date',
             'provisioned_username_enc' => 'encrypted',
             'provisioned_password_enc' => 'encrypted',

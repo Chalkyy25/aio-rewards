@@ -6,6 +6,7 @@ use App\Models\Purchase;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
 use DomainException;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Str;
 
 /**
@@ -84,6 +85,12 @@ class OrderFulfilmentService
             after: ['status' => $to->value],
             actor: $actor,
         );
+
+        // Notify the buyer once fulfilment reaches Completed (idempotent).
+        if ($to === OrderStatus::Completed) {
+            App::make(\App\Domain\Notifications\BuyerOrderNotifier::class)
+                ->sendOrderCompleted($purchase);
+        }
     }
 
     /**

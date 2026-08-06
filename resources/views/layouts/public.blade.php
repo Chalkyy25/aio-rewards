@@ -17,7 +17,13 @@
     <link rel="apple-touch-icon" href="{{ asset('images/aio-media-logo-light.png') }}">
 
     <style>
-        :root { color-scheme: light dark; }
+        /*
+         * We only ship light-theme UI on customer-facing pages, but the
+         * <picture> element in partials.logo still swaps to the white-text
+         * logo automatically for visitors whose OS/browser is in dark
+         * mode — see partials/logo.blade.php.
+         */
+        :root { color-scheme: light; }
         html, body { margin: 0; padding: 0; font-family: 'Inter', system-ui, sans-serif; background: #fafafa; color: #111; }
         header, main, footer { max-width: 1080px; margin: 0 auto; padding: 1.5rem; }
         header { display: flex; align-items: center; justify-content: space-between; }

@@ -47,7 +47,7 @@ class AdminPanelProvider extends PanelProvider
             ->brandLogo(fn () => asset('images/aio-media-logo-light.png'))
             ->darkModeBrandLogo(fn () => asset('images/aio-media-logo-dark.png'))
             ->brandLogoHeight('2.5rem')
-            ->favicon(asset('images/aio-media-logo-light.png'))
+            ->favicon(asset('images/aio-favicon.png'))
             ->colors([
                 'primary' => Color::Slate,
             ])

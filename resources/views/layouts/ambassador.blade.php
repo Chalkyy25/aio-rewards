@@ -7,8 +7,9 @@
     <title>@yield('title', 'My Rewards — ' . config('app.name'))</title>
     <meta name="robots" content="noindex,nofollow">
     <meta name="referrer" content="strict-origin-when-cross-origin">
-    <link rel="icon" type="image/png" href="{{ asset('images/aio-media-logo-light.png') }}">
-    <link rel="apple-touch-icon" href="{{ asset('images/aio-media-logo-light.png') }}">
+    <link rel="icon" type="image/png" href="{{ asset('images/aio-favicon.png') }}">
+    <link rel="apple-touch-icon" href="{{ asset('images/aio-favicon.png') }}">
+    <link rel="shortcut icon" href="{{ asset('images/aio-favicon.png') }}">
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=inter:400,500,600,700&display=swap" rel="stylesheet">
     <style>

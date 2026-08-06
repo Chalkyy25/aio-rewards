@@ -75,10 +75,11 @@ class BrandLogoTest extends TestCase
         $this->assertStringContainsString('data-testid="brand-logo-member-img"', $body);
     }
 
-    public function test_favicon_link_points_at_the_light_logo(): void
+    public function test_favicon_link_points_at_the_aio_mark(): void
     {
         $body = $this->get(route('home'))->getContent();
-        $this->assertMatchesRegularExpression('#<link[^>]+rel="icon"[^>]+aio-media-logo-light\.png#', $body);
+        $this->assertMatchesRegularExpression('#<link[^>]+rel="icon"[^>]+aio-favicon\.png#', $body);
+        $this->assertMatchesRegularExpression('#<link[^>]+rel="apple-touch-icon"[^>]+aio-favicon\.png#', $body);
     }
 
     public function test_filament_admin_panel_registers_brand_logos(): void

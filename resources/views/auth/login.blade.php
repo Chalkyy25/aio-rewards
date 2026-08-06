@@ -13,6 +13,12 @@
     button.primary { width: 100%; padding: .85rem 1rem; background: #0f172a; color: #fff;
                      border: 0; border-radius: .5rem; font-weight: 600; margin-top: 1rem;
                      cursor: pointer; }
+    .admin-link { display: block; width: 100%; margin-top: 1.25rem; padding: .7rem 1rem;
+                  text-align: center; background: transparent; color: #0f172a;
+                  border: 1px solid #cbd5e1; border-radius: .5rem; font-weight: 500;
+                  text-decoration: none; font-size: .9rem; box-sizing: border-box;
+                  transition: all .15s ease; }
+    .admin-link:hover { border-color: #0f172a; background: #f8fafc; }
     .flash-status { background: #ecfdf5; color: #065f46; padding: .75rem 1rem; border-radius: .5rem;
                     margin-bottom: 1rem; }
     .alert-error { background: #fef2f2; color: #991b1b; padding: .75rem 1rem; border-radius: .5rem; }
@@ -55,5 +61,9 @@
         <p class="subtle">
             New here? <a href="{{ route('activate') }}" data-testid="login-activate">Activate your account</a>.
         </p>
+
+        <a href="/admin/login" class="admin-link" data-testid="login-admin-link">
+            Are you an administrator? Sign in here →
+        </a>
     </div>
 @endsection

@@ -1,0 +1,35 @@
+{
+  "summary": "Admin login experience fully verified. Full PHPUnit suite: 122/122 passing (393 assertions) including the 9 new AdminLoginExperienceTest cases. Live preview E2E confirms: /login=200 with data-testid='login-admin-link' anchor pointing to /admin/login using outline style (.admin-link class, transparent bg + border) distinct from primary Sign in button (.primary, dark bg); POST /login as ambassador-only redirects to /ambassador/dashboard; GET /post-login unauthenticated redirects to /login; GET /post-login as ambassador-only redirects to /ambassador/dashboard; GET /admin as ambassador-only returns 403 (Filament policy); ambassador dashboard HTML contains 0 occurrences of 'Admin Access' / 'nav-admin-access' for ambassador-only user. All 9 unit test cases (dual-role chooser, admin-only redirect, super_admin redirect, dual-role dashboard shows Admin Access) pass in phpunit.",
+  "backend_tests": {
+    "command": "php artisan test",
+    "result": "122 passed / 0 failed / 393 assertions / 3.43s",
+    "focus_suite": "Tests\\Feature\\Auth\\AdminLoginExperienceTest — 9/9 passed, 29 assertions"
+  },
+  "e2e_results": {
+    "GET /login": "200, contains data-testid=\"login-admin-link\" href=\"/admin/login\" text 'Are you an administrator? Sign in here', outline style (.admin-link, transparent bg, 1px border) distinct from .primary CTA",
+    "POST /login (ambassador-only preview-verified@example.com)": "302 -> /ambassador/dashboard",
+    "GET /post-login (ambassador-only auth)": "302 -> /ambassador/dashboard",
+    "GET /post-login (guest)": "302 -> /login (auth middleware)",
+    "GET /admin (ambassador-only auth)": "403 (Filament canAccessPanel rejects — assertion allows 302->/admin/login OR 403; got 403)",
+    "GET /ambassador/dashboard (ambassador-only)": "200, ZERO occurrences of 'Admin Access' or 'nav-admin-access' — correctly hidden"
+  },
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/tests/Feature/Auth/AdminLoginExperienceTest.php"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "LoginController::store correctly ANDs hasPanel && hasAmbassador for dual-role chooser branch — matches spec.",
+    "PostLoginChooserController::show short-circuits single-role users home (301/302 to /admin or /ambassador/dashboard) — verified via feature test and live E2E as ambassador-only user.",
+    "Ambassador layout uses hasAnyRole(Role::panelRoles()) gate for the 'Admin Access' nav item — E2E confirms 0 leaks to ambassador-only accounts.",
+    "login.blade.php .admin-link uses transparent bg + 1px border (outline/ghost) — visually distinct from .primary (dark filled) — meets 'not primary CTA' requirement."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (122/122)", "frontend": "100% (all E2E redirect + HTML checks pass)"},
+  "test_credentials": "preview-verified@example.com / previewpass1234 used for live E2E ambassador-only path. Admin/super-admin/dual-role users exercised via feature tests (RefreshDatabase + RolesAndPermissionsSeeder + factory role assignment).",
+  "seed_data_creation": "None persisted — feature tests use RefreshDatabase; live E2E only used pre-seeded preview-verified ambassador.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Admin login experience acceptance criteria met end-to-end. LoginController routes on hasAnyRole(Role::panelRoles()) + hasRole(Ambassador). /post-login route name is post-login.choose, uses auth middleware. Ambassador layout nav emits data-testid='nav-admin-access' only when hasAnyRole(panelRoles()). Full suite is now 122 tests; if adding new phases keep this baseline green."
+}

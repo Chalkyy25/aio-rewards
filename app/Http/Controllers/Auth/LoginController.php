@@ -54,8 +54,15 @@ class LoginController extends Controller
         /** @var User $user */
         $user = Auth::user();
 
-        // Admin-tier users can go straight to their panel.
-        if ($user->hasAnyRole(Role::panelRoles())) {
+        $hasPanel = $user->hasAnyRole(Role::panelRoles());
+        $hasAmbassador = $user->hasRole(Role::Ambassador->value);
+
+        // Dual-role users pick where to land.
+        if ($hasPanel && $hasAmbassador) {
+            return redirect()->route('post-login.choose');
+        }
+
+        if ($hasPanel) {
             return redirect()->intended('/admin');
         }
 

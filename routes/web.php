@@ -51,6 +51,10 @@ Route::middleware('guest')->group(function () {
 
 Route::post('/logout', LogoutController::class)->middleware('auth')->name('logout');
 
+Route::get('/post-login', [\App\Http\Controllers\Auth\PostLoginChooserController::class, 'show'])
+    ->middleware('auth')
+    ->name('post-login.choose');
+
 Route::middleware('auth')->group(function () {
     Route::get('/email/verify', [EmailVerificationController::class, 'notice'])->name('verification.notice');
     Route::get('/email/verify/{id}/{hash}', [EmailVerificationController::class, 'verify'])->middleware(['signed', 'throttle:6,1'])->name('verification.verify');

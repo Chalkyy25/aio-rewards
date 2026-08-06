@@ -16,6 +16,7 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Support\Facades\Auth;
@@ -97,6 +98,15 @@ class ReferralConversionResource extends Resource
                     'approved' => 'Approved',
                     'reversed' => 'Reversed',
                 ]),
+                Filter::make('eligible_for_approval')
+                    ->label('Eligible for auto-approval')
+                    ->toggle()
+                    ->query(fn ($query) => tap($query, function ($q) {
+                        $ids = app(ConversionService::class)
+                            ->eligibleForApprovalQuery()
+                            ->pluck('id');
+                        $q->whereIn('id', $ids);
+                    })),
             ])
             ->recordActions([
                 ViewAction::make(),

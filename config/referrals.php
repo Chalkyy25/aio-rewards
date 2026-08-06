@@ -34,7 +34,15 @@ return [
     | automatic sweeper job in a later phase).
     */
     'conversion' => [
-        'refund_window_days' => (int) env('REFERRAL_REFUND_WINDOW_DAYS', 14),
+        // Days a paid, referred order must sit fulfilled before a
+        // ReferralConversion becomes eligible for automatic approval.
+        // Change via .env: REFERRAL_APPROVAL_WINDOW_DAYS=14
+        'approval_window_days' => (int) env('REFERRAL_APPROVAL_WINDOW_DAYS', env('REFERRAL_REFUND_WINDOW_DAYS', 14)),
+        // Alias retained for existing pending_until stamping.
+        'refund_window_days' => (int) env('REFERRAL_REFUND_WINDOW_DAYS', env('REFERRAL_APPROVAL_WINDOW_DAYS', 14)),
+        // How many conversions to lock and process per batch when the
+        // scheduled sweeper runs.
+        'approval_batch_size' => (int) env('REFERRAL_APPROVAL_BATCH_SIZE', 100),
     ],
 
     /*

@@ -44,6 +44,10 @@ class AdminPanelProvider extends PanelProvider
                 isRequired: fn (?\App\Models\User $user): bool => $user?->requiresPanelMfa() ?? false,
             )
             ->brandName(config('app.name'))
+            ->brandLogo(fn () => asset('images/aio-media-logo-light.png'))
+            ->darkModeBrandLogo(fn () => asset('images/aio-media-logo-dark.png'))
+            ->brandLogoHeight('2.5rem')
+            ->favicon(asset('images/aio-media-logo-light.png'))
             ->colors([
                 'primary' => Color::Slate,
             ])

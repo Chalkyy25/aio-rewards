@@ -7,6 +7,8 @@
     <title>@yield('title', 'My Rewards — ' . config('app.name'))</title>
     <meta name="robots" content="noindex,nofollow">
     <meta name="referrer" content="strict-origin-when-cross-origin">
+    <link rel="icon" type="image/png" href="{{ asset('images/aio-media-logo-light.png') }}">
+    <link rel="apple-touch-icon" href="{{ asset('images/aio-media-logo-light.png') }}">
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=inter:400,500,600,700&display=swap" rel="stylesheet">
     <style>
@@ -19,7 +21,7 @@
                                 text-decoration: none; background: none; border: 0;
                                 text-align: left; font: inherit; cursor: pointer; width:100%; }
         aside a:hover, aside button:hover { color: #fff; }
-        aside .brand { color: #fff; font-weight: 700; margin-bottom: 1.5rem; letter-spacing: -0.01em; }
+        aside .brand { margin-bottom: 1.25rem; }
         aside .divider { border-top: 1px solid #1e293b; margin: 1rem 0; }
         main { padding: 2rem; max-width: 1080px; }
         @media (max-width: 720px) {
@@ -34,7 +36,9 @@
 <body>
 <div class="shell">
     <aside>
-        <div class="brand" data-testid="ambassador-brand">{{ config('app.name') }}</div>
+        <div class="brand" data-testid="ambassador-brand">
+            @include('partials.logo', ['variant' => 'dark', 'height' => 42, 'testid' => 'brand-logo-member'])
+        </div>
         <a href="{{ route('ambassador.dashboard') }}" data-testid="nav-dashboard">My Rewards</a>
         <a href="{{ route('ambassador.security') }}" data-testid="nav-security">Account security</a>
         @if (auth()->user()?->hasAnyRole(\App\Enums\Role::panelRoles()))

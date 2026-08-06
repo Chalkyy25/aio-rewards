@@ -13,8 +13,11 @@
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=inter:400,500,600,700&display=swap" rel="stylesheet">
 
+    <link rel="icon" type="image/png" href="{{ asset('images/aio-media-logo-light.png') }}">
+    <link rel="apple-touch-icon" href="{{ asset('images/aio-media-logo-light.png') }}">
+
     <style>
-        :root { color-scheme: light; }
+        :root { color-scheme: light dark; }
         html, body { margin: 0; padding: 0; font-family: 'Inter', system-ui, sans-serif; background: #fafafa; color: #111; }
         header, main, footer { max-width: 1080px; margin: 0 auto; padding: 1.5rem; }
         header { display: flex; align-items: center; justify-content: space-between; }
@@ -28,10 +31,10 @@
 </head>
 <body class="h-full">
     <header>
-        <a href="{{ route('home') }}" class="brand" data-testid="brand-name">{{ settings('brand.name') }}</a>
+        @include('partials.logo', ['variant' => 'auto', 'height' => 40, 'testid' => 'brand-logo-public'])
         <nav>
             @auth
-                <a href="{{ route('ambassador.dashboard') }}">Dashboard</a>
+                <a href="{{ route('ambassador.dashboard') }}">My Rewards</a>
             @endauth
         </nav>
     </header>

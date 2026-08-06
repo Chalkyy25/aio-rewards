@@ -30,7 +30,7 @@ class AmbassadorActivationServiceTest extends TestCase
         $this->app->instance(CustomerVerificationContract::class, new FakeVerificationDriver);
     }
 
-    public function test_happy_path_creates_user_profile_role_and_sends_welcome_and_verify(): void
+    public function test_happy_path_creates_user_profile_role_and_sends_only_verify_email(): void
     {
         Notification::fake();
 
@@ -51,8 +51,14 @@ class AmbassadorActivationServiceTest extends TestCase
         $this->assertNotEmpty($ambassador->referral_code);
         $this->assertSame('fake', $ambassador->provider_driver_key);
 
+        // Verify email is sent at activation. Welcome email is NOT — it now
+        // fires from the Verified event listener after the user confirms.
         Notification::assertSentTo($ambassador->user, VerifyEmail::class);
-        Notification::assertSentTo($ambassador->user, AmbassadorWelcomeNotification::class);
+        Notification::assertNotSentTo($ambassador->user, AmbassadorWelcomeNotification::class);
+
+        // email_verified_at remains null until the user actually clicks the link.
+        $this->assertNull($ambassador->user->refresh()->email_verified_at);
+        $this->assertNull($ambassador->user->refresh()->welcome_email_sent_at);
     }
 
     public function test_provider_password_is_never_persisted_in_users_ambassadors_or_audit_logs(): void

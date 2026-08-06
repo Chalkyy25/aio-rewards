@@ -12,7 +12,6 @@ use App\Domain\Provider\Exceptions\ProviderUnavailableException;
 use App\Enums\Role as RoleEnum;
 use App\Models\AmbassadorProfile;
 use App\Models\User;
-use App\Notifications\AmbassadorWelcomeNotification;
 use App\Support\Audit\AuditLogger;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Support\Facades\DB;
@@ -96,7 +95,9 @@ class AmbassadorActivationService
         Event::dispatch(new Registered($ambassador->user));
         Event::dispatch(new AmbassadorActivated($ambassador));
 
-        $ambassador->user->notify(new AmbassadorWelcomeNotification($ambassador));
+        // Welcome email is NOT sent here. It fires via
+        // SendAmbassadorWelcomeAfterVerified once Laravel's Verified event
+        // is emitted — i.e. only after the ambassador confirms their email.
 
         return $ambassador;
     }

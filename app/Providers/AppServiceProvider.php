@@ -2,10 +2,13 @@
 
 namespace App\Providers;
 
+use App\Listeners\SendAmbassadorWelcomeAfterVerified;
 use App\Models\AmbassadorProfile;
 use App\Models\ReferralClick;
 use App\Policies\AmbassadorProfilePolicy;
 use App\Policies\ReferralClickPolicy;
+use Illuminate\Auth\Events\Verified;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
@@ -31,5 +34,10 @@ class AppServiceProvider extends ServiceProvider
 
         Gate::policy(AmbassadorProfile::class, AmbassadorProfilePolicy::class);
         Gate::policy(ReferralClick::class, ReferralClickPolicy::class);
+
+        // Send the welcome email exactly once, AFTER Laravel's own email
+        // verification has succeeded. See SendAmbassadorWelcomeAfterVerified
+        // for the idempotency guarantees.
+        Event::listen(Verified::class, SendAmbassadorWelcomeAfterVerified::class);
     }
 }

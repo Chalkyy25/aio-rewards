@@ -61,9 +61,16 @@ Route::get('/post-login', [\App\Http\Controllers\Auth\PostLoginChooserController
 
 Route::middleware('auth')->group(function () {
     Route::get('/email/verify', [EmailVerificationController::class, 'notice'])->name('verification.notice');
-    Route::get('/email/verify/{id}/{hash}', [EmailVerificationController::class, 'verify'])->middleware(['signed', 'throttle:6,1'])->name('verification.verify');
     Route::post('/email/verification-notification', [EmailVerificationController::class, 'resend'])->middleware('throttle:6,1')->name('verification.send');
 });
+
+// Verify endpoint is NOT gated behind the auth middleware: it must work
+// cross-device (phone opens the emailed link even though there's no session
+// on that device). The `signed` middleware + hash comparison in the
+// controller are what secures it.
+Route::get('/email/verify/{id}/{hash}', [EmailVerificationController::class, 'verify'])
+    ->middleware(['signed', 'throttle:6,1'])
+    ->name('verification.verify');
 
 Route::middleware(['auth', 'verified'])->prefix('ambassador')->name('ambassador.')->group(function () {
     Route::get('/dashboard', [AmbassadorDashboardController::class, 'show'])->name('dashboard');

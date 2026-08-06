@@ -41,7 +41,7 @@ class AdminPanelProvider extends PanelProvider
             ->emailVerification()
             ->multiFactorAuthentication(
                 AppAuthentication::make(),
-                isRequired: true,
+                isRequired: fn (?\App\Models\User $user): bool => $user?->requiresPanelMfa() ?? false,
             )
             ->brandName(config('app.name'))
             ->colors([

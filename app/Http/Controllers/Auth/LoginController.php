@@ -40,7 +40,13 @@ class LoginController extends Controller
 
         $remember = $request->boolean('remember');
 
-        if (! Auth::attempt(['email' => Str::lower($credentials['email']), 'password' => $credentials['password'], 'is_active' => true], $remember)) {
+        // First stage: verify credentials without persisting the login when
+        // the account has app-level MFA turned on. We flip the log-in on
+        // ourselves only after the TOTP challenge succeeds.
+        $email = Str::lower($credentials['email']);
+        $user = User::query()->where('email', $email)->where('is_active', true)->first();
+
+        if (! $user || ! \Illuminate\Support\Facades\Hash::check($credentials['password'], $user->password)) {
             RateLimiter::hit($throttleKey, 60);
 
             throw ValidationException::withMessages([
@@ -48,11 +54,19 @@ class LoginController extends Controller
             ]);
         }
 
+        // Step-up: ambassador-level MFA is opt-in. Panel roles come here too;
+        // Filament's own MFA still kicks in when they land on /admin. This
+        // handles the app-level /login form only.
+        if ($user->mfa_enabled && $user->mfaConfigured() && ! $user->hasAnyRole(\App\Enums\Role::panelRoles())) {
+            $request->session()->put('mfa.pending_user_id', $user->id);
+            $request->session()->put('mfa.remember', $remember);
+
+            return redirect()->route('login.challenge');
+        }
+
+        Auth::login($user, $remember);
         RateLimiter::clear($throttleKey);
         $request->session()->regenerate();
-
-        /** @var User $user */
-        $user = Auth::user();
 
         $hasPanel = $user->hasAnyRole(Role::panelRoles());
         $hasAmbassador = $user->hasRole(Role::Ambassador->value);

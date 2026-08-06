@@ -34,6 +34,7 @@ class User extends Authenticatable implements FilamentUser, HasAppAuthentication
         'email',
         'password',
         'is_active',
+        'mfa_enabled',
     ];
 
     /** @var list<string> */
@@ -53,6 +54,8 @@ class User extends Authenticatable implements FilamentUser, HasAppAuthentication
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'is_active' => 'boolean',
+            'mfa_enabled' => 'boolean',
+            'mfa_enabled_at' => 'datetime',
             'app_authentication_secret' => 'encrypted',
             'app_authentication_recovery_codes' => 'encrypted:array',
         ];
@@ -69,6 +72,36 @@ class User extends Authenticatable implements FilamentUser, HasAppAuthentication
         }
 
         return $this->hasAnyRole(Role::panelRoles());
+    }
+
+    /**
+     * Whether Filament should force this user through an MFA challenge on
+     * every panel login.
+     *
+     * Rules:
+     *   - Super Admin: ALWAYS required.
+     *   - Admin: required by default; may be disabled per-user via mfa_enabled=false.
+     *   - Other panel users (support): follow the same "default on, opt-out" rule.
+     *   - Non-panel users (ambassadors) never reach this call because
+     *     canAccessPanel() rejects them first.
+     */
+    public function requiresPanelMfa(): bool
+    {
+        if ($this->hasRole(Role::SuperAdmin->value)) {
+            return true;
+        }
+
+        // Admin/support: honour the per-user flag. Column default keeps
+        // existing admin-tier users on MFA (see migration 2026_08_04_240000).
+        return (bool) $this->mfa_enabled;
+    }
+
+    /**
+     * True when a working TOTP secret is present on the account.
+     */
+    public function mfaConfigured(): bool
+    {
+        return ! empty($this->app_authentication_secret);
     }
 
     // ---- HasAppAuthentication -----------------------------------------------

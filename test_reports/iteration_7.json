@@ -1,0 +1,46 @@
+{
+  "summary": "Backend-only regression for the new MFA authentication flow. Full PHPUnit suite green: 159 passed / 498 assertions / 4.33s — matches the spec's target exactly (previous baseline 148 tests + 11 new MfaFlowTest cases = 159). All 11 tests/Feature/Auth/MfaFlowTest.php cases pass (56 assertions), covering: ambassador login without MFA, activation does not force MFA enrolment, enable MFA via Livewire AmbassadorSecurity (start/confirmEnrolment w/ wrong+correct TOTP), MFA challenge flow (redirect to /login/2fa, wrong code rejection, correct TOTP auth), one-shot recovery code consumption, regenerate recovery codes (no overlap), disable MFA (wrong+correct password), User::requiresPanelMfa() semantics for super_admin (always true) / admin (follows flag) / ambassador (always false / no panel access). AdminPanelProvider::panel() confirmed at line 42-44: `->multiFactorAuthentication(..., isRequired: fn (?\\App\\Models\\User $user): bool => $user?->requiresPanelMfa() ?? false)` — closure, not boolean true, per spec.",
+  "backend_tests": {
+    "command": "php artisan test",
+    "result": "159 passed / 0 failed / 498 assertions / 4.33s",
+    "focus_suite": "Tests\\Feature\\Auth\\MfaFlowTest — 11/11 passed, 56 assertions",
+    "specific_cases_verified": [
+      "ambassador can log in without mfa",
+      "ambassador activation does not require mfa enrolment",
+      "ambassador can enable mfa from the security page",
+      "mfa enrolment rejects a wrong code",
+      "ambassador with mfa enabled must pass the challenge to log in",
+      "recovery code can be used once to log in",
+      "ambassador can regenerate recovery codes",
+      "ambassador can disable mfa with correct password",
+      "super admin always requires panel mfa",
+      "admin requires panel mfa by default",
+      "ambassador does not require panel mfa at all"
+    ]
+  },
+  "filament_closure_verification": {
+    "file": "app/Providers/Filament/AdminPanelProvider.php",
+    "lines": "42-44",
+    "snippet": "->multiFactorAuthentication(\n    app(\\Filament\\Auth\\MultiFactor\\App\\AppAuthentication::class)->recoverable(),\n    isRequired: fn (?\\App\\Models\\User $user): bool => $user?->requiresPanelMfa() ?? false,\n)",
+    "conclusion": "isRequired is a Closure that consults User::requiresPanelMfa(), NOT a bare boolean — matches spec."
+  },
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/tests/Feature/Auth/MfaFlowTest.php"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "MFA enrolment is now opt-in for ambassadors and configurable-with-default-on for admin/support, while super_admin is always forced via User::requiresPanelMfa() — matches product spec.",
+    "TwoFactorChallengeController rate-limits 10/min per user+ip, uses Google2FA window=2, and falls back to recovery-code consumption — recovery codes correctly one-shot removed from the array on use.",
+    "AmbassadorSecurity Livewire component uses #[SensitiveParameter] on the disable password and audits all state transitions (mfa_enabled, mfa_disabled, mfa_recovery_regenerated, challenge passed/failed) via AuditLogger.",
+    "AdminPanelProvider uses a Closure (not boolean) for isRequired — ensures Super Admin still forced through Filament panel MFA while allowing admins to have it toggled off by a Super Admin."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (159/159)", "frontend": "n/a (backend-only slice)"},
+  "test_credentials": "Verified via /app/memory/test_credentials.md — preview-admin@example.com / AdminPass1234! (super admin, panel MFA forced) and preview-verified@example.com / previewpass1234 (ambassador w/o MFA). Not exercised over HTTP in this iteration — MfaFlowTest.php covers every branch in-process against SQLite.",
+  "seed_data_creation": "None — MfaFlowTest uses RefreshDatabase + factories.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Baseline is now 159 tests / 498 assertions (was 148/442; +11 tests / +56 assertions from MfaFlowTest). Route inventory added: GET /login/2fa (login.challenge), POST /login/2fa (login.challenge.submit), GET /ambassador/security (ambassador.security). Livewire component App\\Livewire\\AmbassadorSecurity backs /ambassador/security. If future slices modify LoginController branching, preserve the invariant: user with mfa_enabled && mfaConfigured() && no-panel-role → stash mfa.pending_user_id + redirect to login.challenge; otherwise Auth::login + role-based redirect. requiresPanelMfa() must remain: super_admin ⇒ true, others ⇒ mfa_enabled flag, ambassador-only users don't hit the panel (canAccessPanel returns false)."
+}

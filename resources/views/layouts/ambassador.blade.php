@@ -36,6 +36,7 @@
     <aside>
         <div class="brand" data-testid="ambassador-brand">{{ config('app.name') }}</div>
         <a href="{{ route('ambassador.dashboard') }}" data-testid="nav-dashboard">Dashboard</a>
+        <a href="{{ route('ambassador.security') }}" data-testid="nav-security">Account security</a>
         @if (auth()->user()?->hasAnyRole(\App\Enums\Role::panelRoles()))
             <a href="/admin" data-testid="nav-admin-access" style="color:#fef3c7">Admin Access</a>
         @endif

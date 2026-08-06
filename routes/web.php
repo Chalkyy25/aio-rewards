@@ -47,6 +47,10 @@ Route::middleware('guest')->group(function () {
     Route::post('/forgot-password', [PasswordResetLinkController::class, 'store'])->middleware('throttle:5,1')->name('password.email');
     Route::get('/reset-password/{token}', [NewPasswordController::class, 'show'])->name('password.reset');
     Route::post('/reset-password', [NewPasswordController::class, 'store'])->middleware('throttle:5,1')->name('password.update');
+
+    Route::get('/login/2fa', [\App\Http\Controllers\Auth\TwoFactorChallengeController::class, 'show'])->name('login.challenge');
+    Route::post('/login/2fa', [\App\Http\Controllers\Auth\TwoFactorChallengeController::class, 'verify'])
+        ->middleware('throttle:10,1')->name('login.challenge.submit');
 });
 
 Route::post('/logout', LogoutController::class)->middleware('auth')->name('logout');
@@ -63,4 +67,5 @@ Route::middleware('auth')->group(function () {
 
 Route::middleware(['auth', 'verified'])->prefix('ambassador')->name('ambassador.')->group(function () {
     Route::get('/dashboard', [AmbassadorDashboardController::class, 'show'])->name('dashboard');
+    Route::get('/security', \App\Livewire\AmbassadorSecurity::class)->name('security');
 });

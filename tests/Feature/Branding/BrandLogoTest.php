@@ -29,16 +29,29 @@ class BrandLogoTest extends TestCase
         $this->assertFileExists(public_path('images/aio-media-logo-dark.png'));
     }
 
-    public function test_public_landing_serves_the_responsive_logo(): void
+    public function test_public_landing_renders_class_based_theme_swap_logo(): void
     {
         $body = $this->get(route('home'))->assertOk()->getContent();
 
-        // <picture> element renders both variants so the browser can pick
-        // according to prefers-color-scheme.
+        // Both variants are rendered; CSS shows one at a time based on the
+        // `.dark` class (Filament's theme-toggle signal) — NOT prefers-color-scheme.
         $this->assertStringContainsString('images/aio-media-logo-light.png', $body);
         $this->assertStringContainsString('images/aio-media-logo-dark.png', $body);
-        $this->assertStringContainsString('prefers-color-scheme: dark', $body);
-        $this->assertStringContainsString('data-testid="brand-logo-public-picture"', $body);
+        $this->assertStringContainsString('data-testid="brand-logo-public-img-light"', $body);
+        $this->assertStringContainsString('data-testid="brand-logo-public-img-dark"', $body);
+        // The CSS rule that drives the swap is present.
+        $this->assertStringContainsString('html.dark .aio-logo .aio-logo__light', $body);
+        // We must NOT be relying on OS preference any more.
+        $this->assertStringNotContainsString('prefers-color-scheme', $body);
+    }
+
+    public function test_public_layouts_do_not_declare_color_scheme_dark(): void
+    {
+        $body = $this->get(route('home'))->getContent();
+        // color-scheme must be plain "light" — advertising "light dark" was
+        // what made native controls / bgs turn black in dark-mode browsers.
+        $this->assertMatchesRegularExpression('/color-scheme:\s*light\s*;/', $body);
+        $this->assertDoesNotMatchRegularExpression('/color-scheme:\s*light\s+dark/', $body);
     }
 
     public function test_member_layout_uses_the_dark_theme_logo_for_the_dark_sidebar(): void

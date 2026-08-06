@@ -2,9 +2,9 @@
     <form wire:submit="save" data-testid="provider-verification-form">
         {{ $this->form }}
 
-        <div style="margin-top:1.5rem;display:flex;gap:.5rem">
+        <div style="margin-top:1.5rem;display:flex;gap:.5rem" data-testid="provider-verification-actions">
             <x-filament::button type="submit" data-testid="provider-verification-save">Save changes</x-filament::button>
-            <x-filament::button color="gray" wire:click="testConnection" data-testid="provider-verification-test">Test connection</x-filament::button>
+            {{ $this->testConnectionAction }}
         </div>
     </form>
 

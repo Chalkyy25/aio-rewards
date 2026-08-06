@@ -102,13 +102,17 @@ class XtreamVerificationTest extends TestCase
         $this->driver(dns: '')->verifyActiveCustomer(new VerifyCustomerRequest('anyone', 'pw'));
     }
 
-    public function test_test_connection_records_last_response_code(): void
+    public function test_verify_active_customer_success_writes_success_diagnostics(): void
     {
-        Http::fake(['iptv.example.test/player_api.php*' => Http::response('', 200)]);
+        Http::fake([
+            'iptv.example.test/player_api.php*' => Http::response(['user_info' => ['auth' => 1, 'status' => 'Active', 'username' => 'alice']], 200),
+        ]);
 
-        $probe = $this->driver()->probeConnection();
-        $this->assertTrue($probe['ok']);
+        $result = $this->driver()->verifyActiveCustomer(new VerifyCustomerRequest('alice', 'pw'));
+
+        $this->assertTrue($result->eligible);
         $this->assertSame('200', settings('provider.last_response_code'));
+        $this->assertSame('eligible', settings('provider.last_note'));
         $this->assertNotNull(settings('provider.last_success_at'));
     }
 

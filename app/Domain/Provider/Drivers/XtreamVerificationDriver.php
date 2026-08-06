@@ -127,42 +127,6 @@ class XtreamVerificationDriver implements CustomerVerificationContract
         return VerifyCustomerResult::eligible($customerRef);
     }
 
-    /**
-     * Public probe for the "Test connection" admin action. Uses an
-     * intentionally-invalid credential pair so the upstream cannot side-effect
-     * on our account, but still returns a reachable HTTP status.
-     *
-     * @return array{ok: bool, http_status: ?int, note: string}
-     */
-    public function probeConnection(#[SensitiveParameter] string $probeUsername = 'aio_probe', #[SensitiveParameter] string $probePassword = 'aio_probe_pw'): array
-    {
-        if ($this->dnsUrl === '') {
-            return ['ok' => false, 'http_status' => null, 'note' => 'no_dns_url_configured'];
-        }
-        try {
-            $response = $this->http
-                ->timeout($this->timeout)
-                ->connectTimeout(min(5, $this->timeout))
-                ->acceptJson()
-                ->get($this->endpoint(), ['username' => $probeUsername, 'password' => $probePassword]);
-        } catch (ConnectionException) {
-            $this->recordProbe(success: false, httpStatus: null, note: 'connection_error');
-
-            return ['ok' => false, 'http_status' => null, 'note' => 'unreachable'];
-        } catch (Throwable) {
-            $this->recordProbe(success: false, httpStatus: null, note: 'transport_error');
-
-            return ['ok' => false, 'http_status' => null, 'note' => 'transport_error'];
-        }
-
-        // Reaching player_api.php at all means the DNS is up. A 2xx / 4xx
-        // both count as "reachable"; only 5xx or connection error do not.
-        $ok = $response->status() < 500;
-        $this->recordProbe(success: $ok, httpStatus: $response->status(), note: $ok ? 'reachable' : 'upstream_5xx');
-
-        return ['ok' => $ok, 'http_status' => $response->status(), 'note' => $ok ? 'reachable' : 'upstream_5xx'];
-    }
-
     private function endpoint(): string
     {
         return rtrim($this->dnsUrl, '/').'/player_api.php';

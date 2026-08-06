@@ -3,9 +3,12 @@
 namespace App\Filament\Pages;
 
 use App\Domain\Provider\Contracts\CustomerVerificationContract;
-use App\Domain\Provider\Drivers\XtreamVerificationDriver;
+use App\Domain\Provider\DTOs\VerifyCustomerRequest;
+use App\Domain\Provider\Enums\VerificationFailureReason;
+use App\Domain\Provider\Exceptions\ProviderUnavailableException;
 use App\Domain\Settings\SettingsRepository;
 use App\Enums\Role as RoleEnum;
+use Filament\Actions\Action;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Forms\Concerns\InteractsWithForms;
@@ -14,8 +17,8 @@ use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
-use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Support\Facades\Auth;
+use SensitiveParameter;
 
 class ProviderVerificationSettings extends Page implements HasForms
 {
@@ -57,7 +60,7 @@ class ProviderVerificationSettings extends Page implements HasForms
     {
         return $schema->components([
             Section::make('Verification behaviour')
-                ->description('When disabled, activation lets every submitted username through without contacting the upstream. Use only for controlled maintenance windows.')
+                ->description('When disabled, activation is halted with a temporarily-unavailable message. Use only for controlled maintenance windows.')
                 ->schema([
                     Toggle::make('enabled')->label('Enable verification')->default(true),
                     TextInput::make('display_name')->label('Provider display name')->maxLength(190)->required(),
@@ -68,7 +71,7 @@ class ProviderVerificationSettings extends Page implements HasForms
                 ->schema([
                     TextInput::make('xtream_dns_url')
                         ->label('Xtream DNS URL')
-                        ->helperText('Example: https://iptv.example.com  — will hit {url}/player_api.php')
+                        ->helperText('Example: https://iptv.example.com — will hit {url}/player_api.php')
                         ->url()
                         ->maxLength(500),
                     TextInput::make('timeout_seconds')
@@ -96,37 +99,134 @@ class ProviderVerificationSettings extends Page implements HasForms
         Notification::make()->title('Provider verification settings saved')->success()->send();
     }
 
-    public function testConnection(): void
+    /**
+     * "Test Connection" — routes through the SAME container binding used by
+     * the ambassador activation flow (`CustomerVerificationContract`). Prompts
+     * the operator for a one-shot probe username/password so we exercise the
+     * real authenticated path, not a special "probe" endpoint.
+     *
+     * The credentials:
+     *   • exist only inside this action closure ($data is not persisted to
+     *     Livewire state — it's the ephemeral modal form payload);
+     *   • are consumed once by verifyActiveCustomer();
+     *   • are explicitly `unset()` before the notification is rendered so
+     *     they cannot leak into subsequent renders, exceptions or logs.
+     *
+     * All diagnostics writes (last_success_at / last_response_code / last_note)
+     * are performed by the driver itself (single source of truth); this method
+     * only classifies the result for display.
+     */
+    public function testConnectionAction(): Action
     {
-        $repo = app(SettingsRepository::class);
-        $dns = trim((string) $repo->value('provider.xtream_dns_url'));
-        if ($dns === '') {
-            Notification::make()->title('No DNS URL configured')->danger()->send();
+        return Action::make('testConnection')
+            ->label('Test connection')
+            ->color('gray')
+            ->modalHeading('Test Provider Verification')
+            ->modalSubmitActionLabel('Run test')
+            ->modalDescription('Enter a real Xtream credential pair. The values are used once for this probe and are not stored, logged, audited or cached.')
+            ->schema([
+                TextInput::make('probe_username')
+                    ->label('Xtream username')
+                    ->required()
+                    ->autocomplete('off')
+                    ->maxLength(190),
+                TextInput::make('probe_password')
+                    ->label('Xtream password')
+                    ->required()
+                    ->password()
+                    ->revealable(false)
+                    ->autocomplete('off')
+                    ->maxLength(190),
+            ])
+            ->action(function (array $data): void {
+                $this->runProbe(
+                    (string) ($data['probe_username'] ?? ''),
+                    (string) ($data['probe_password'] ?? ''),
+                );
+                // Zero out the modal payload BEFORE we return so it cannot
+                // survive on the wire or in any exception rendered by the
+                // Livewire error handler. (We also never stored it on $this.)
+                unset($data);
+            });
+    }
+
+    /**
+     * Executes exactly one verification through the container-bound driver.
+     * Never persists, logs, audits, caches, queues or flashes the creds.
+     */
+    private function runProbe(#[SensitiveParameter] string $username, #[SensitiveParameter] string $password): void
+    {
+        if (trim($username) === '' || $password === '') {
+            Notification::make()->title('Username and password are required for the probe')->danger()->send();
 
             return;
         }
 
-        $statuses = array_values(array_filter(array_map('trim', explode(',', (string) $repo->value('provider.active_status_values')))));
-        $driver = new XtreamVerificationDriver(
-            http: app(HttpFactory::class),
-            settings: $repo,
-            dnsUrl: $dns,
-            timeout: (int) ($repo->value('provider.timeout_seconds') ?? '8'),
-            activeStatusValues: $statuses === [] ? ['Active'] : $statuses,
-        );
+        $driver = app(CustomerVerificationContract::class);
+        $driverKey = $driver->driverKey();
+        $startedAt = microtime(true);
 
-        $probe = $driver->probeConnection();
-        if ($probe['ok']) {
+        try {
+            $result = $driver->verifyActiveCustomer(new VerifyCustomerRequest($username, $password));
+        } catch (ProviderUnavailableException $e) {
+            // Driver has already written last_failure_at / last_note.
+            // Do NOT include $e->getMessage() in the UI — it may echo upstream response text.
+            unset($username, $password);
+            $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
             Notification::make()
-                ->title('Xtream DNS reachable')
-                ->body('HTTP '.$probe['http_status'].' — '.$probe['note'])
-                ->success()->send();
-        } else {
+                ->title('Provider unavailable')
+                ->body('Driver: '.$driverKey.'. HTTP '.(app(SettingsRepository::class)->value('provider.last_response_code') ?? 'n/a').'. Duration: '.$durationMs.' ms. Try again later.')
+                ->danger()
+                ->send();
+
+            return;
+        } catch (\Throwable) {
+            // Never surface exception text — it can contain the request body.
+            unset($username, $password);
+            $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
             Notification::make()
                 ->title('Test failed')
-                ->body('HTTP '.($probe['http_status'] ?? 'n/a').' — '.$probe['note'])
-                ->danger()->send();
+                ->body('Unexpected error contacting the provider. Duration: '.$durationMs.' ms.')
+                ->danger()
+                ->send();
+
+            return;
         }
+
+        // Discard credentials immediately — the driver's HTTP call has completed.
+        unset($username, $password);
+
+        $repo = app(SettingsRepository::class);
+        $httpStatus = $repo->value('provider.last_response_code') ?? 'n/a';
+        $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
+
+        if ($result->eligible) {
+            Notification::make()
+                ->title('Success — account is eligible')
+                ->body('Driver: '.$driverKey.'. HTTP '.$httpStatus.'. Duration: '.$durationMs.' ms. Status: active.')
+                ->success()
+                ->send();
+
+            return;
+        }
+
+        // Rejection classification — expose only the safe reason enum label.
+        $reason = $result->reason ?? VerificationFailureReason::Error;
+        Notification::make()
+            ->title('Verified — account not eligible')
+            ->body('Driver: '.$driverKey.'. HTTP '.$httpStatus.'. Duration: '.$durationMs.' ms. Reason: '.$this->safeReasonLabel($reason))
+            ->warning()
+            ->send();
+    }
+
+    private function safeReasonLabel(VerificationFailureReason $reason): string
+    {
+        return match ($reason) {
+            VerificationFailureReason::WrongCredentials => 'wrong credentials',
+            VerificationFailureReason::NotFound => 'account not found',
+            VerificationFailureReason::Inactive => 'subscription inactive',
+            VerificationFailureReason::Error => 'temporarily unavailable',
+        };
     }
 
     /** @return array<string, mixed> */

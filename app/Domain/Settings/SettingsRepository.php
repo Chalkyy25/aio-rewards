@@ -104,6 +104,20 @@ class SettingsRepository
             'provider.xtream_dns_url' => ['group' => 'provider', 'label' => 'Xtream DNS URL', 'default' => ''],
             'provider.timeout_seconds' => ['group' => 'provider', 'label' => 'Connection timeout (seconds)', 'default' => '8'],
             'provider.active_status_values' => ['group' => 'provider', 'label' => 'Active status values (comma-separated)', 'default' => 'Active'],
+
+            // Operations Centre — thresholds and escalation timings.
+            'ops.enabled' => ['group' => 'ops', 'label' => 'Enable Operations Centre scanner', 'default' => '1'],
+            'ops.order.unviewed_minutes' => ['group' => 'ops', 'label' => 'Order-unviewed alert (minutes)', 'default' => '15'],
+            'ops.order.waiting_l1_minutes' => ['group' => 'ops', 'label' => 'Order-waiting L1 (minutes)', 'default' => '15'],
+            'ops.order.waiting_l2_minutes' => ['group' => 'ops', 'label' => 'Order-waiting L2 (minutes)', 'default' => '30'],
+            'ops.order.waiting_l3_minutes' => ['group' => 'ops', 'label' => 'Order-waiting L3 (minutes)', 'default' => '60'],
+            'ops.order.in_progress_hours' => ['group' => 'ops', 'label' => 'Order in-progress too-long (hours)', 'default' => '4'],
+            'ops.order.credentials_unopened_hours' => ['group' => 'ops', 'label' => 'Customer credentials unopened (hours)', 'default' => '24'],
+            'ops.reward.approved_unpaid_hours' => ['group' => 'ops', 'label' => 'Approved reward unpaid (hours)', 'default' => '72'],
+            'ops.escalation.high_after_minutes' => ['group' => 'ops', 'label' => 'Escalate to High after (minutes open)', 'default' => '30'],
+            'ops.escalation.critical_after_minutes' => ['group' => 'ops', 'label' => 'Escalate to Critical after (minutes open)', 'default' => '60'],
+            'ops.reminders.enabled' => ['group' => 'ops', 'label' => 'Send reminder notifications to admins', 'default' => '1'],
+            'ops.reminders.digest_minutes' => ['group' => 'ops', 'label' => 'Reminder digest interval (minutes)', 'default' => '60'],
         ];
     }
 

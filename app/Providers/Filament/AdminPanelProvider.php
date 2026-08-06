@@ -47,6 +47,8 @@ class AdminPanelProvider extends PanelProvider
             ->colors([
                 'primary' => Color::Slate,
             ])
+            // Operations Centre is the default landing page after login.
+            ->homeUrl(fn () => \App\Filament\Resources\OperationsItemResource::getUrl('index'))
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->pages([
@@ -55,6 +57,7 @@ class AdminPanelProvider extends PanelProvider
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
             ->widgets([
                 AccountWidget::class,
+                \App\Filament\Widgets\OperationsBellWidget::class,
                 \App\Filament\Widgets\OperationsOverviewWidget::class,
                 \App\Filament\Widgets\RewardsOverviewWidget::class,
                 \App\Filament\Widgets\RecentOrdersWidget::class,

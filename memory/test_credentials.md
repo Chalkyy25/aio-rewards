@@ -27,10 +27,11 @@ message and refuse to create the account.
 
 ## Filament admin panel
 - URL: `/admin/login`
-- Preview Super Admin (seeded in this session):
-  - Email: `preview-admin@example.com`
-  - Password: `AdminPass1234!`
+- Preview Super Admin (seeded this session):
+  - Email: `admin@aio.test`
+  - Password: `SuperSecret1234`
   - MFA: TOTP enforced on first login (an enrolment step happens automatically).
+- **Default landing page after login: `/admin/operations` (Operations Centre)**
 - Create additional admins via `php artisan aio:make-super-admin` (interactive).
 
 ## Packages (Phase 3 — Stripe checkout)

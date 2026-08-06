@@ -17,3 +17,20 @@ Schedule::job(new ApproveRipeReferralConversionsJob)
     ->withoutOverlapping()
     ->onOneServer()
     ->name('referrals.approval-sweep');
+
+// Operations Centre scanner — detects new business events every minute,
+// dedupes against open items, auto-resolves cleared conditions, and
+// runs the escalation sweep in the same pass.
+Schedule::command('aio:ops-scan')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->onOneServer()
+    ->name('ops.scan');
+
+// Reminder digest — emails a summary of open critical/high items to
+// panel admins on the configured interval. No-ops when disabled.
+Schedule::command('aio:ops-remind')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping()
+    ->onOneServer()
+    ->name('ops.reminders');

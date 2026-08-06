@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>@yield('title', 'Ambassador — ' . config('app.name'))</title>
+    <title>@yield('title', 'My Rewards — ' . config('app.name'))</title>
     <meta name="robots" content="noindex,nofollow">
     <meta name="referrer" content="strict-origin-when-cross-origin">
     <link rel="preconnect" href="https://fonts.bunny.net">
@@ -35,7 +35,7 @@
 <div class="shell">
     <aside>
         <div class="brand" data-testid="ambassador-brand">{{ config('app.name') }}</div>
-        <a href="{{ route('ambassador.dashboard') }}" data-testid="nav-dashboard">Dashboard</a>
+        <a href="{{ route('ambassador.dashboard') }}" data-testid="nav-dashboard">My Rewards</a>
         <a href="{{ route('ambassador.security') }}" data-testid="nav-security">Account security</a>
         @if (auth()->user()?->hasAnyRole(\App\Enums\Role::panelRoles()))
             <a href="/admin" data-testid="nav-admin-access" style="color:#fef3c7">Admin Access</a>

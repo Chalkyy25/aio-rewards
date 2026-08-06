@@ -7,7 +7,7 @@
             @if ($refName)
                 You were referred by <strong data-testid="referral-name">{{ $refName }}</strong>. Complete your purchase to support them.
             @else
-                You were referred by an AIO Rewards ambassador. Complete your purchase to support them.
+                You were referred by an AIO Rewards member. Complete your purchase to support them.
             @endif
         </div>
     @endif
@@ -63,10 +63,10 @@
     @else
         <section style="max-width:820px" data-testid="section-existing">
             <h2 style="font-size:1.25rem;margin:0 0 .4rem">Already an AIO Media customer?</h2>
-            <p style="color:#475569;margin:0 0 1rem">Activate your AIO Rewards ambassador account, earn rewards on referrals, or sign in.</p>
+            <p style="color:#475569;margin:0 0 1rem">Join AIO Rewards and start earning rewards on referrals, or sign in.</p>
             <a href="{{ route('activate') }}" data-testid="cta-activate"
                style="display:inline-block;padding:.6rem 1.2rem;background:#fff;border:1px solid #cbd5e1;color:#0f172a;border-radius:.5rem;text-decoration:none;font-weight:600;margin-right:.5rem">
-                Activate Ambassador account
+                Join AIO Rewards
             </a>
             <a href="{{ route('login') }}" data-testid="cta-login"
                style="display:inline-block;padding:.6rem 1.2rem;color:#0f172a;text-decoration:underline;font-weight:500">

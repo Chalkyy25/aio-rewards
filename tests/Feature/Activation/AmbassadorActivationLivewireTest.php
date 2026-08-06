@@ -25,7 +25,7 @@ class AmbassadorActivationLivewireTest extends TestCase
     public function test_activate_page_renders_and_shows_form(): void
     {
         $this->get('/activate')->assertOk()
-            ->assertSee('Activate your Ambassador account')
+            ->assertSee('Join AIO Rewards')
             ->assertSeeHtml('data-testid="activate-form"');
     }
 

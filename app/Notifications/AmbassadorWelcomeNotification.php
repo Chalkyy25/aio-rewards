@@ -32,7 +32,7 @@ class AmbassadorWelcomeNotification extends Notification implements ShouldQueue
         return (new MailMessage)
             ->subject('Welcome to AIO Rewards')
             ->greeting('Welcome, '.$this->ambassador->user->name.'!')
-            ->line('Your AIO Rewards ambassador account is ready.')
+            ->line('Your AIO Rewards account is ready.')
             ->line('Share this referral link with friends and family — when they buy an AIO Media package, you earn rewards:')
             ->line('**'.$this->ambassador->referralUrl().'**')
             ->line('Your unique referral code is: **'.$this->ambassador->referral_code.'**')

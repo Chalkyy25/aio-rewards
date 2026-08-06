@@ -3,9 +3,9 @@
      style="max-width:620px;margin:3rem auto;background:#fff;padding:2rem;border-radius:1rem;box-shadow:0 2px 30px -12px rgba(15,23,42,.12)">
     <h1 style="margin:0 0 .8rem" data-testid="verify-waiting-title">Almost there — verify your email</h1>
     <p style="color:#334155">
-        Thanks for activating your Ambassador account. We've sent a verification link
+        Thanks for joining AIO Rewards. We've sent a verification link
         to <strong>{{ auth()->user()->email }}</strong>. Please click the link in that
-        email to unlock your dashboard.
+        email to unlock your Rewards dashboard.
     </p>
     <p data-testid="verify-waiting-hint" style="color:#64748b;font-size:.9rem;margin-top:.5rem">
         This page will detect verification automatically — even if you open the email on your phone.

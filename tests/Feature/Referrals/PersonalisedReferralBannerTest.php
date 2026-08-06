@@ -43,7 +43,7 @@ class PersonalisedReferralBannerTest extends TestCase
         $this->withUnencryptedCookie($cookie, $ref)
             ->get('/')
             ->assertOk()
-            ->assertSee('You were referred by an AIO Rewards ambassador.')
+            ->assertSee('You were referred by an AIO Rewards member.')
             ->assertDontSee('data-testid="referral-name"', escape: false);
     }
 

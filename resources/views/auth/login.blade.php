@@ -59,7 +59,7 @@
             <a href="{{ route('password.request') }}" data-testid="login-forgot">Forgot your password?</a>
         </p>
         <p class="subtle">
-            New here? <a href="{{ route('activate') }}" data-testid="login-activate">Activate your account</a>.
+            New here? <a href="{{ route('activate') }}" data-testid="login-activate">Join AIO Rewards</a>.
         </p>
 
         <a href="/admin/login" class="admin-link" data-testid="login-admin-link">

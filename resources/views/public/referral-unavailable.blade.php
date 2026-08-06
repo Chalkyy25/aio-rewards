@@ -9,7 +9,7 @@
             @if (($reason ?? 'notfound') === 'busy')
                 We're seeing a lot of traffic on this link right now. Please try again in a moment.
             @else
-                This referral link is no longer active. It may have been mistyped or the ambassador is no longer in the programme.
+                This referral link is no longer active. It may have been mistyped or the referring Rewards Member is no longer in the programme.
             @endif
         </p>
         <p style="margin-top:1.5rem">

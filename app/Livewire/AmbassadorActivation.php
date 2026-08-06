@@ -51,7 +51,7 @@ class AmbassadorActivation extends Component
     public function render(): View
     {
         return view('livewire.ambassador-activation')
-            ->extends('layouts.public', ['title' => 'Activate your Ambassador account']);
+            ->extends('layouts.public', ['title' => 'Join AIO Rewards']);
     }
 
     public function submit(AmbassadorActivationService $service): void

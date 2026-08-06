@@ -28,7 +28,7 @@ class AmbassadorConversionApprovedNotification extends Notification
             ->greeting('Hi '.$notifiable->name.',')
             ->line("A referral you sent has just been approved for **{$amount}**.")
             ->line('Referral code: '.$this->conversion->referral_code_snapshot)
-            ->action('Open your ambassador dashboard', url('/ambassador/dashboard'))
+            ->action('Open My Rewards', url('/ambassador/dashboard'))
             ->line('Rewards are calculated once you cross each milestone. Keep sharing!')
             ->salutation('— the AIO Media team');
     }

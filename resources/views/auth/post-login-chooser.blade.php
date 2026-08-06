@@ -29,12 +29,12 @@
             <p>You have access to both areas. Where would you like to go?</p>
             <div class="chooser-grid">
                 <a href="{{ route('ambassador.dashboard') }}" class="chooser-tile" data-testid="chooser-ambassador">
-                    <div class="title">Open Ambassador Dashboard</div>
+                    <div class="title">Open My Rewards</div>
                     <div class="subtitle">Your referral link, clicks, conversions and rewards.</div>
                 </a>
                 <a href="/admin" class="chooser-tile chooser-primary" data-testid="chooser-admin">
                     <div class="title">Open Admin Panel</div>
-                    <div class="subtitle">Manage packages, orders, rules and ambassadors.</div>
+                    <div class="subtitle">Manage packages, orders, rules and Rewards Members.</div>
                 </a>
             </div>
             <div class="signout">

@@ -26,7 +26,7 @@
 @endpush
 
 <div class="card">
-    <h1 style="margin:0 0 .5rem;font-size:1.5rem">Activate your Ambassador account</h1>
+    <h1 style="margin:0 0 .5rem;font-size:1.5rem">Join AIO Rewards</h1>
     <p style="color:#475569;margin:0 0 1.5rem">
         Confirm you're an active AIO Media customer, then choose your new AIO Rewards login.
     </p>
@@ -117,12 +117,12 @@
 
         <button class="primary" type="submit" data-testid="activate-submit"
                 wire:loading.attr="disabled" wire:target="submit">
-            <span wire:loading.remove wire:target="submit">Activate my account</span>
+            <span wire:loading.remove wire:target="submit">Join AIO Rewards</span>
             <span wire:loading wire:target="submit">Verifying…</span>
         </button>
     </form>
 
     <p style="text-align:center;margin-top:1rem;color:#64748b;font-size:.9rem">
-        Already an ambassador? <a href="{{ route('login') }}" style="color:#0f172a">Sign in</a>.
+        Already a Rewards Member? <a href="{{ route('login') }}" style="color:#0f172a">Sign in</a>.
     </p>
 </div>

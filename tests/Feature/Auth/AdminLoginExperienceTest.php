@@ -85,7 +85,7 @@ class AdminLoginExperienceTest extends TestCase
         $this->actingAs($user)
             ->get(route('post-login.choose'))
             ->assertOk()
-            ->assertSee('Open Ambassador Dashboard')
+            ->assertSee('Open My Rewards')
             ->assertSee('Open Admin Panel')
             ->assertSee('data-testid="chooser-ambassador"', escape: false)
             ->assertSee('data-testid="chooser-admin"', escape: false);

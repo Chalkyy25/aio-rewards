@@ -67,7 +67,9 @@
 
 @section('content')
     <h1 style="margin:0 0 .25rem">Welcome, {{ $user->name }}</h1>
-    <p style="color:#475569;margin:0">Share your link. Every completed purchase counts toward your next reward.</p>
+    <p style="color:#475569;margin:0" data-testid="rewards-dashboard-subtitle">
+        Rewards dashboard — share your link. Every completed purchase counts toward your next reward.
+    </p>
 
     @if ($profile)
         {{-- Referral link + share --}}
@@ -214,7 +216,7 @@
         </div>
     @else
         <div class="card" style="margin-top:1.5rem;background:#fef2f2;color:#991b1b">
-            You don't have an ambassador profile yet. Please contact support.
+            You don't have a Rewards Member profile yet. Please contact support.
         </div>
     @endif
 @endsection

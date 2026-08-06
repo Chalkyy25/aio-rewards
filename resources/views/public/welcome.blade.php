@@ -20,16 +20,53 @@
 
     <hr style="margin:3rem 0;border:0;border-top:1px solid #e2e8f0">
 
-    <section style="max-width:820px" data-testid="section-existing">
-        <h2 style="font-size:1.25rem;margin:0 0 .4rem">Already an AIO Media customer?</h2>
-        <p style="color:#475569;margin:0 0 1rem">Activate your AIO Rewards ambassador account, earn rewards on referrals, or sign in.</p>
-        <a href="{{ route('activate') }}" data-testid="cta-activate"
-           style="display:inline-block;padding:.6rem 1.2rem;background:#fff;border:1px solid #cbd5e1;color:#0f172a;border-radius:.5rem;text-decoration:none;font-weight:600;margin-right:.5rem">
-            Activate Ambassador account
-        </a>
-        <a href="{{ route('login') }}" data-testid="cta-login"
-           style="display:inline-block;padding:.6rem 1.2rem;color:#0f172a;text-decoration:underline;font-weight:500">
-            Sign in
-        </a>
-    </section>
+    @auth
+        @php
+            $user = auth()->user();
+            $hasPanel = $user->hasAnyRole(\App\Enums\Role::panelRoles());
+            $hasAmbassador = $user->hasRole(\App\Enums\Role::Ambassador->value);
+        @endphp
+        <section style="max-width:820px" data-testid="section-authenticated">
+            <h2 style="font-size:1.25rem;margin:0 0 .4rem">Welcome back, {{ $user->name }}.</h2>
+            <p style="color:#475569;margin:0 0 1rem">You are signed in — jump straight to your workspace.</p>
+
+            @if ($hasPanel && $hasAmbassador)
+                <a href="{{ route('post-login.choose') }}" data-testid="cta-post-login"
+                   style="display:inline-block;padding:.6rem 1.2rem;background:#0f172a;color:#fff;border-radius:.5rem;text-decoration:none;font-weight:600;margin-right:.5rem">
+                    Choose where to go
+                </a>
+            @elseif ($hasPanel)
+                <a href="/admin" data-testid="cta-admin-panel"
+                   style="display:inline-block;padding:.6rem 1.2rem;background:#0f172a;color:#fff;border-radius:.5rem;text-decoration:none;font-weight:600;margin-right:.5rem">
+                    Open admin panel
+                </a>
+            @else
+                <a href="{{ route('ambassador.dashboard') }}" data-testid="cta-open-dashboard"
+                   style="display:inline-block;padding:.6rem 1.2rem;background:#0f172a;color:#fff;border-radius:.5rem;text-decoration:none;font-weight:600;margin-right:.5rem">
+                    Open my dashboard
+                </a>
+            @endif
+
+            <form method="POST" action="{{ route('logout') }}" style="display:inline">
+                @csrf
+                <button type="submit" data-testid="cta-signout"
+                        style="padding:.6rem 1.2rem;background:transparent;border:0;color:#0f172a;text-decoration:underline;font-weight:500;cursor:pointer">
+                    Sign out
+                </button>
+            </form>
+        </section>
+    @else
+        <section style="max-width:820px" data-testid="section-existing">
+            <h2 style="font-size:1.25rem;margin:0 0 .4rem">Already an AIO Media customer?</h2>
+            <p style="color:#475569;margin:0 0 1rem">Activate your AIO Rewards ambassador account, earn rewards on referrals, or sign in.</p>
+            <a href="{{ route('activate') }}" data-testid="cta-activate"
+               style="display:inline-block;padding:.6rem 1.2rem;background:#fff;border:1px solid #cbd5e1;color:#0f172a;border-radius:.5rem;text-decoration:none;font-weight:600;margin-right:.5rem">
+                Activate Ambassador account
+            </a>
+            <a href="{{ route('login') }}" data-testid="cta-login"
+               style="display:inline-block;padding:.6rem 1.2rem;color:#0f172a;text-decoration:underline;font-weight:500">
+                Sign in
+            </a>
+        </section>
+    @endauth
 @endsection

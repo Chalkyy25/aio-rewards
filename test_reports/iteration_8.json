@@ -1,0 +1,23 @@
+{
+  "summary": "Ran full php artisan test suite. All 171 tests passed with 530 assertions (Duration 4.58s). Verified the 12 new AuthRoutingRegressionTest cases green (guest CTAs, /login and /activate reachable as guest, ambassador/admin/dual-role landing CTAs, RedirectIfAuthenticated behavior for each role, 419 recovery flow via TokenMismatchException render callback). MfaFlowTest (11) and AdminLoginExperienceTest (9) baselines still green — no regressions.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/tests/Feature/Routing/AuthRoutingRegressionTest.php"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (171/171)", "frontend": "N/A - backend only"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Baseline is now 171 passing tests / 530 assertions. AuthRoutingRegressionTest (12 tests) covers routing/CTA/419-recovery scope. Bootstrap-level RedirectIfAuthenticated::redirectUsing binding + TokenMismatchException render callback in bootstrap/app.php are working as designed."
+}

@@ -2,6 +2,7 @@
 
 use App\Domain\Provider\Drivers\AioIptvVerificationDriver;
 use App\Domain\Provider\Drivers\FakeVerificationDriver;
+use App\Domain\Provider\Drivers\XtreamVerificationDriver;
 
 return [
 
@@ -18,6 +19,13 @@ return [
     'drivers' => [
         'fake' => [
             'class' => FakeVerificationDriver::class,
+        ],
+
+        // Standard Xtream Codes upstream. DNS URL, timeout and active-status
+        // whitelist are all pulled from the Settings table at runtime by
+        // DomainServiceProvider — do NOT put them in .env.
+        'xtream' => [
+            'class' => XtreamVerificationDriver::class,
         ],
 
         'aio_iptv_v1' => [

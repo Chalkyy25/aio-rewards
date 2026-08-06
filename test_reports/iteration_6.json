@@ -1,0 +1,55 @@
+{
+  "summary": "Backend-only regression for Xtream Provider Verification slice. Full PHPUnit suite: 148/148 passing (442 assertions, 4.41s). All 12 Tests\\Feature\\Provider\\XtreamVerificationTest cases green (23 assertions). Route `filament.admin.pages.settings/provider-verification` confirmed via `php artisan route:list` at path `admin/settings/provider-verification`. Livewire AmbassadorActivation.php line 89 explicitly zeroes `$this->provider_password = ''` inside the finally block; no other persistence sites for the raw password found. Password-isolation test (no row in settings or audit_logs contains distinctive password 'super-secret-pw-xyz-2026') passing. Container binding cases (a/b/c), all 7 verifyActiveCustomer branches, probeConnection diagnostics writes (last_response_code/last_success_at/last_note='reachable'), and Filament canAccess() super-admin gating all pass via feature tests.",
+  "backend_tests": {
+    "command": "php artisan test",
+    "result": "148 passed / 0 failed / 442 assertions / 4.41s",
+    "focus_suite": "Tests\\Feature\\Provider\\XtreamVerificationTest — 12/12 passed, 23 assertions",
+    "specific_cases_verified": [
+      "active account is eligible",
+      "inactive account is rejected",
+      "invalid credentials return wrong credentials",
+      "401 response returns wrong credentials",
+      "unreachable dns raises provider unavailable",
+      "missing dns url raises provider unavailable",
+      "test connection records last response code",
+      "password is never persisted or logged",
+      "verification enabled setting is honoured",
+      "verification disabled swaps in disabled driver for non fake config",
+      "settings page is gated to super admin",
+      "settings update persists and takes effect on next container resolve"
+    ]
+  },
+  "route_verification": {
+    "command": "php artisan route:list | grep provider-verification",
+    "result": "GET|HEAD  admin/settings/provider-verification  filament.admin.pages.settings/provider-verification"
+  },
+  "livewire_password_isolation": {
+    "file": "app/Livewire/AmbassadorActivation.php",
+    "findings": [
+      "Line 44: public string $provider_password = '' (Livewire component state)",
+      "Line 89: $this->provider_password = '' inside finally block — clears after activation attempts",
+      "Line 103: passed into VerifyCustomerRequest constructor (marked #[SensitiveParameter] per spec)",
+      "No other sites in app/ read/write provider_password to storage, logs, cache, or session"
+    ]
+  },
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/tests/Feature/Provider/XtreamVerificationTest.php"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "XtreamVerificationDriver correctly records diagnostics (last_response_code as string, last_success_at/last_failure_at ISO 8601, last_note) via SettingsRepository on every attempt — verified through the 12 driver tests.",
+    "DomainServiceProvider container binding logic honours the spec: driver=xtream + enabled=1 -> Xtream; enabled=0 with non-fake driver -> Disabled no-op; fake is exempt (never demoted).",
+    "Filament ProviderVerificationSettings::canAccess() is gated on super_admin role — plain admin correctly rejected. Same guard applies to the base Settings page.",
+    "Password isolation: Livewire finally block zeroes provider_password; grep confirms no persistence of the distinctive test password across settings/audit_logs tables. Meets 'never stored, logged, queued, audited, cached, or persisted' requirement.",
+    "config/provider.php intentionally omits DNS/timeout from env — pulled from SettingsRepository schema (provider.xtream_dns_url, provider.timeout_seconds). Matches spec that these are DB-backed, not env-backed."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (148/148)", "frontend": "n/a (backend-only slice)"},
+  "test_credentials": "Not required — all verification flows exercised via Http::fake against DNS 'iptv.example.test' inside phpunit; no live preview URL hit for Xtream driver.",
+  "seed_data_creation": "None — feature tests use RefreshDatabase.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Baseline is now 148 tests / 442 assertions. Preview default remains PROVIDER_VERIFICATION_DRIVER=fake — Xtream driver is only exercised via Http::fake in unit tests. Filament page at /admin/settings/provider-verification is gated by canAccess()==super_admin; live URL hit not part of test scope (TOTP MFA required by Filament middleware). If future slices touch DomainServiceProvider binding order, keep 'fake exemption' branch intact (case c)."
+}

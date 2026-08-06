@@ -28,7 +28,7 @@
 </head>
 <body class="h-full">
     <header>
-        <a href="{{ route('home') }}" class="brand">{{ config('app.name') }}</a>
+        <a href="{{ route('home') }}" class="brand" data-testid="brand-name">{{ settings('brand.name') }}</a>
         <nav>
             @auth
                 <a href="{{ route('ambassador.dashboard') }}">Dashboard</a>
@@ -41,7 +41,7 @@
     </main>
 
     <footer>
-        &copy; {{ date('Y') }} {{ config('app.name') }}
+        <span data-testid="footer-note">{{ settings('brand.footer_note') }}</span>
     </footer>
 
     @livewireScripts

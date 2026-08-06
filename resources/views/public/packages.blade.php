@@ -1,8 +1,8 @@
 @extends('layouts.public')
 @section('title', 'AIO Media packages')
 @section('content')
-    <h1 style="font-size:1.75rem;margin:0 0 .5rem">AIO Media packages</h1>
-    <p style="color:#475569;max-width:640px;margin:0 0 2rem">Choose a package, enter your delivery details, then pay securely with Stripe.</p>
+    <h1 style="font-size:1.75rem;margin:0 0 .5rem" data-testid="packages-heading">{{ settings('public.packages_heading') }}</h1>
+    <p style="color:#475569;max-width:640px;margin:0 0 2rem" data-testid="packages-subheading">{{ settings('public.packages_subheading') }}</p>
 
     @if ($packages->isEmpty())
         <p data-testid="pkg-empty" style="color:#64748b">No packages are available right now.</p>

@@ -30,13 +30,15 @@ class BuyerOrderCompletedNotification extends Notification
         $statusUrl = $this->purchase->customer_view_token
             ? url('/order/'.$this->purchase->customer_view_token)
             : null;
-        $support = (string) config('support.contact_email', config('mail.from.address'));
+        $support = (string) (settings('brand.support_email') ?: config('support.contact_email') ?: config('mail.from.address'));
         $ref = $this->purchase->orderReference();
+        $leadLine = (string) settings('orders.completed_lead');
+        $securityReminder = (string) settings('orders.security_reminder');
 
         $msg = (new MailMessage)
-            ->subject('Your AIO Media access is ready — '.$ref)
+            ->subject((settings('brand.name') ?: 'AIO Rewards').' — your access is ready — '.$ref)
             ->greeting('Hi '.$this->purchase->buyer_name.',')
-            ->line('**Your AIO Media access is ready.**')
+            ->line('**'.$leadLine.'**')
             ->line('**Order:** '.$ref)
             ->line('**Package:** '.$this->purchase->package->name);
 
@@ -46,7 +48,7 @@ class BuyerOrderCompletedNotification extends Notification
 
         if ($statusUrl) {
             $msg->action('View your credentials & setup', $statusUrl)
-                ->line('For your security your password is **not included in this email** — it is only shown on the protected page above.')
+                ->line($securityReminder)
                 ->line('Please save your credentials somewhere secure and do not share this link.');
         } else {
             $msg->line('Please contact support to retrieve your access details.');

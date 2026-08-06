@@ -8,10 +8,9 @@
     @endif
 
     <section style="max-width:820px" data-testid="section-buyer">
-        <h1 style="font-size:2.2rem;letter-spacing:-0.02em;margin:0 0 .5rem">New to AIO Media?</h1>
-        <p style="color:#334155;font-size:1.05rem;max-width:640px;line-height:1.55">
-            AIO Media delivers IPTV, VPN and streaming subscriptions with a single account.
-            Choose a package and get started in minutes — no existing AIO account required.
+        <h1 style="font-size:2.2rem;letter-spacing:-0.02em;margin:0 0 .5rem" data-testid="landing-heading">{{ settings('public.landing_heading') }}</h1>
+        <p style="color:#334155;font-size:1.05rem;max-width:640px;line-height:1.55" data-testid="landing-subheading">
+            {{ settings('public.landing_subheading') }}
         </p>
         <a href="{{ route('packages') }}" data-testid="cta-packages"
            style="display:inline-block;margin-top:1rem;padding:.9rem 1.6rem;background:#0f172a;color:#fff;border-radius:.5rem;text-decoration:none;font-weight:600">

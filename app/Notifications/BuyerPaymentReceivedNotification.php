@@ -28,13 +28,15 @@ class BuyerPaymentReceivedNotification extends Notification
         $statusUrl = $this->purchase->customer_view_token
             ? url('/order/'.$this->purchase->customer_view_token)
             : null;
-        $support = (string) config('support.contact_email', config('mail.from.address'));
+        $support = (string) (settings('brand.support_email') ?: config('support.contact_email') ?: config('mail.from.address'));
         $ref = $this->purchase->orderReference();
+        $leadLine = (string) settings('orders.payment_received_lead');
 
         $msg = (new MailMessage)
             ->subject("Payment received — {$ref}")
             ->greeting('Hi '.$this->purchase->buyer_name.',')
-            ->line("We've received your payment. Your AIO Media order **{$ref}** is now being prepared.")
+            ->line($leadLine)
+            ->line('**Order:** '.$ref)
             ->line('**Package:** '.$this->purchase->package->name.' — '.$this->purchase->priceFormatted())
             ->line('**Preferred username:** '.$this->purchase->preferred_username)
             ->line('**Current status:** '.$this->purchase->statusLabel());

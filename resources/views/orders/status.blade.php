@@ -106,9 +106,12 @@
                 @endif
             </div>
 
-            @if ($purchase->setup_instructions_md)
+            @php
+                $instructions = $purchase->setup_instructions_md ?: settings('orders.default_setup_instructions');
+            @endphp
+            @if ($instructions)
                 <h2 style="font-size:1rem;margin:1.2rem 0 .5rem">Setup instructions</h2>
-                <div class="instructions" data-testid="order-instructions">{{ $purchase->setup_instructions_md }}</div>
+                <div class="instructions" data-testid="order-instructions">{{ $instructions }}</div>
             @endif
 
             @if (! empty($purchase->download_links))

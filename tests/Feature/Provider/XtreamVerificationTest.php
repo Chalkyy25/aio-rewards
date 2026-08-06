@@ -146,7 +146,7 @@ class XtreamVerificationTest extends TestCase
         $this->assertSame('xtream', app(CustomerVerificationContract::class)->driverKey());
     }
 
-    public function test_verification_disabled_swaps_in_disabled_driver_for_non_fake_config(): void
+    public function test_verification_disabled_blocks_activation_via_provider_unavailable(): void
     {
         settings()->putMany([
             'provider.enabled' => '0',
@@ -157,9 +157,11 @@ class XtreamVerificationTest extends TestCase
 
         $driver = app(CustomerVerificationContract::class);
         $this->assertInstanceOf(DisabledVerificationDriver::class, $driver);
-        // Disabled driver never rejects.
-        $result = $driver->verifyActiveCustomer(new VerifyCustomerRequest('anyone', 'ignored'));
-        $this->assertTrue($result->eligible);
+
+        // Disabled driver must NOT silently mark accounts eligible — it
+        // must throw so activation halts with the standard message.
+        $this->expectException(ProviderUnavailableException::class);
+        $driver->verifyActiveCustomer(new VerifyCustomerRequest('anyone', 'ignored'));
     }
 
     public function test_settings_page_is_gated_to_super_admin(): void

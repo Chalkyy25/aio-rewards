@@ -24,59 +24,73 @@ class DomainServiceProvider extends ServiceProvider
 
         $this->app->singleton(CustomerVerificationContract::class, function (Application $app) {
             $key = (string) config('provider.driver');
-            $config = config('provider.drivers.'.$key);
 
-            if (! is_array($config) || ! isset($config['class'])) {
-                throw new InvalidArgumentException("Unknown provider verification driver [{$key}].");
+            // FakeVerificationDriver MUST NOT be resolvable from the container
+            // outside the testing environment. It exists only for automated
+            // tests, which bind an instance explicitly via
+            //   $this->app->instance(CustomerVerificationContract::class, new FakeVerificationDriver);
+            // Any production / staging / preview / local configuration that
+            // still references the fake driver fails loudly here — there is
+            // no silent fallback to fake verification.
+            if ($key === 'fake' && ! $app->environment('testing')) {
+                throw new InvalidArgumentException(
+                    'Fake verification driver is not available outside the testing environment.'
+                );
             }
 
-            // Xtream driver is Settings-driven — swap in at runtime when the
-            // Super Admin has switched to it via config (or, when the config
-            // driver is not "fake", by presence of an Xtream DNS URL in
-            // settings). Falls back to configured class otherwise.
             /** @var SettingsRepository $settings */
             $settings = $app->make(SettingsRepository::class);
             $verificationEnabled = (bool) (int) ($settings->value('provider.enabled') ?? '1');
 
-            // When verification is toggled OFF in production, any driver may
-            // route through the DisabledVerificationDriver — except in the
-            // 'fake' driver preset (local/testing) where we keep the fixture
-            // behaviour intact.
+            // Maintenance mode: verification toggled OFF in Settings. The
+            // DisabledVerificationDriver now REFUSES activations (throws
+            // ProviderUnavailableException) rather than silently marking
+            // everyone as eligible — so no activation can complete while
+            // verification is disabled. Still not applied to the fake
+            // driver, which is fixture-driven inside tests.
             if (! $verificationEnabled && $key !== 'fake') {
                 return new DisabledVerificationDriver;
             }
 
-            $dnsUrl = trim((string) $settings->value('provider.xtream_dns_url'));
-            $useXtream = $key === 'xtream' || ($key !== 'fake' && $dnsUrl !== '');
+            return match ($key) {
+                'xtream' => (function () use ($app, $settings): XtreamVerificationDriver {
+                    $dnsUrl = trim((string) $settings->value('provider.xtream_dns_url'));
+                    $timeout = (int) ($settings->value('provider.timeout_seconds') ?? '8');
+                    $statuses = array_values(array_filter(array_map(
+                        'trim',
+                        explode(',', (string) $settings->value('provider.active_status_values'))
+                    )));
+                    if ($statuses === []) {
+                        $statuses = ['Active'];
+                    }
 
-            if ($useXtream) {
-                $timeout = (int) ($settings->value('provider.timeout_seconds') ?? '8');
-                $statuses = array_values(array_filter(array_map(
-                    'trim',
-                    explode(',', (string) $settings->value('provider.active_status_values'))
-                )));
-                if ($statuses === []) {
-                    $statuses = ['Active'];
-                }
+                    // Note: dnsUrl may be empty at boot; the driver itself
+                    // throws ProviderUnavailableException on verify calls
+                    // so activation surfaces the standard temporarily-
+                    // unavailable message instead of silently succeeding.
+                    return new XtreamVerificationDriver(
+                        http: $app->make(HttpFactory::class),
+                        settings: $settings,
+                        dnsUrl: $dnsUrl,
+                        timeout: $timeout > 0 ? $timeout : 8,
+                        activeStatusValues: $statuses,
+                    );
+                })(),
 
-                return new XtreamVerificationDriver(
-                    http: $app->make(HttpFactory::class),
-                    settings: $settings,
-                    dnsUrl: $dnsUrl,
-                    timeout: $timeout > 0 ? $timeout : 8,
-                    activeStatusValues: $statuses,
-                );
-            }
+                'aio_iptv_v1' => (function () use ($app): AioIptvVerificationDriver {
+                    $config = (array) config('provider.drivers.aio_iptv_v1', []);
 
-            return match ($config['class']) {
-                FakeVerificationDriver::class => new FakeVerificationDriver,
-                AioIptvVerificationDriver::class => new AioIptvVerificationDriver(
-                    http: $app->make(HttpFactory::class),
-                    url: (string) ($config['url'] ?? ''),
-                    apiKey: (string) ($config['api_key'] ?? ''),
-                    timeout: (int) ($config['timeout'] ?? 8),
-                ),
-                default => throw new InvalidArgumentException("Unsupported driver class: {$config['class']}"),
+                    return new AioIptvVerificationDriver(
+                        http: $app->make(HttpFactory::class),
+                        url: (string) ($config['url'] ?? ''),
+                        apiKey: (string) ($config['api_key'] ?? ''),
+                        timeout: (int) ($config['timeout'] ?? 8),
+                    );
+                })(),
+
+                'fake' => new FakeVerificationDriver, // only reachable under APP_ENV=testing
+
+                default => throw new InvalidArgumentException("Unknown provider verification driver [{$key}]."),
             };
         });
     }

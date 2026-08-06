@@ -40,8 +40,8 @@ class PreviewAmbassadorSeeder extends Seeder
             ['user_id' => $user->id],
             [
                 'provider_username' => 'preview_test_user',
-                'provider_customer_ref' => 'fake-ref-preview',
-                'provider_driver_key' => 'fake',
+                'provider_customer_ref' => 'preview-ref',
+                'provider_driver_key' => 'xtream',
                 'referral_code' => 'PREVIEW1',
                 'activated_at' => now(),
             ]

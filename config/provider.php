@@ -11,16 +11,15 @@ return [
     | Active verification driver
     |--------------------------------------------------------------------------
     | Which driver key resolves the CustomerVerificationContract binding.
-    | Use "fake" in local/testing/preview environments so the activation flow
-    | can be exercised end-to-end without real provider credentials.
+    | Production, staging and preview environments MUST use "xtream" (or
+    | another real driver). The "fake" driver is deliberately absent from
+    | the drivers[] map below so it cannot be selected from config, .env,
+    | or the Filament admin panel — it exists only for automated tests,
+    | which inject it explicitly via $this->app->instance(...).
     */
-    'driver' => env('PROVIDER_VERIFICATION_DRIVER', 'fake'),
+    'driver' => env('PROVIDER_VERIFICATION_DRIVER', 'xtream'),
 
     'drivers' => [
-        'fake' => [
-            'class' => FakeVerificationDriver::class,
-        ],
-
         // Standard Xtream Codes upstream. DNS URL, timeout and active-status
         // whitelist are all pulled from the Settings table at runtime by
         // DomainServiceProvider — do NOT put them in .env.

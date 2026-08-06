@@ -39,7 +39,7 @@ class ActivationException extends RuntimeException
     {
         return new self(
             'provider_unavailable',
-            'We are temporarily unable to verify your subscription. Please try again shortly.',
+            "We’re temporarily unable to verify your AIO Media account. Please try again later or contact support.",
         );
     }
 }

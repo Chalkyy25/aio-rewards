@@ -7,11 +7,12 @@
 - Login at: `/login`
 
 ## Fake provider verification driver values (for activation testing at `/activate`)
-- Provider username `test_active` (legacy alias), `test_active_1`, `test_active_2`, `test_active_3` + password `letmein` → ✅ eligible (each activatable once)
-- Provider username `test_inactive` + password `letmein` → ❌ subscription inactive
-- Provider username `test_error` + any password → ❌ simulated provider outage
-- Any other username → ❌ not found
-- Valid username + wrong password → ❌ wrong credentials
+Removed — the fake verification driver is now restricted to automated tests
+only (APP_ENV=testing). Manual activation in preview / staging / production
+uses the real Xtream driver against the DNS configured in the admin panel
+under `/admin/settings/provider-verification`. If the upstream is not
+reachable, activation will surface the "temporarily unable to verify"
+message and refuse to create the account.
 
 ## Fake referral link (Phase 2)
 - `/r/PREVIEW1` — routes to the pre-seeded preview ambassador; sets `aior_ref` cookie; redirects to landing.
@@ -53,5 +54,6 @@ Notes:
 - `MAIL_MAILER=log` → welcome & verification emails written to
   `storage/logs/laravel-*.log` (not sent). Grep the log for
   the verification link to complete the email-verify step manually.
-- `PROVIDER_VERIFICATION_DRIVER=fake` in `.env`; production would set
-  `aio_iptv_v1` and real API credentials.
+- `PROVIDER_VERIFICATION_DRIVER=xtream` — the only runtime driver. The
+  fake driver is compiled out of the config `drivers[]` map and can only
+  be instantiated inside PHPUnit tests via explicit `$this->app->instance(...)`.

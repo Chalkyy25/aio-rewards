@@ -24,12 +24,31 @@ class ViewOperationsItem extends ViewRecord
 
     protected function getHeaderActions(): array
     {
-        return [
-            Action::make('back')
-                ->label('Back to queue')
-                ->url(OperationsItemResource::getUrl('index'))
-                ->color('gray')
-                ->icon('heroicon-o-arrow-left'),
-        ];
+        $meta = (array) ($this->record->meta ?? []);
+        $actions = [];
+
+        if (! empty($meta['reward_admin_path'])) {
+            $actions[] = Action::make('openReward')
+                ->label('Open reward claim')
+                ->url((string) $meta['reward_admin_path'])
+                ->icon('heroicon-o-gift')
+                ->color('primary');
+        }
+
+        if (! empty($meta['member_admin_path'])) {
+            $actions[] = Action::make('openMember')
+                ->label('Open member')
+                ->url((string) $meta['member_admin_path'])
+                ->icon('heroicon-o-user')
+                ->color('gray');
+        }
+
+        $actions[] = Action::make('back')
+            ->label('Back to queue')
+            ->url(OperationsItemResource::getUrl('index'))
+            ->color('gray')
+            ->icon('heroicon-o-arrow-left');
+
+        return $actions;
     }
 }

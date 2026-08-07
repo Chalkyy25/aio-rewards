@@ -75,7 +75,7 @@ class SettingsRepository
      * Registry of every editable key + its default. Used to render the
      * settings admin page and to answer `default($key)`.
      *
-     * @return array<string, array{group:string, label:string, default:string, textarea?:bool}>
+     * @return array<string, array{group:string, label:string, default:string, textarea?:bool, integer?:bool, min?:int, max?:int}>
      */
     public function schema(): array
     {
@@ -107,17 +107,18 @@ class SettingsRepository
 
             // Operations Centre — thresholds and escalation timings.
             'ops.enabled' => ['group' => 'ops', 'label' => 'Enable Operations Centre scanner', 'default' => '1'],
-            'ops.order.unviewed_minutes' => ['group' => 'ops', 'label' => 'Order-unviewed alert (minutes)', 'default' => '15'],
-            'ops.order.waiting_l1_minutes' => ['group' => 'ops', 'label' => 'Order-waiting L1 (minutes)', 'default' => '15'],
-            'ops.order.waiting_l2_minutes' => ['group' => 'ops', 'label' => 'Order-waiting L2 (minutes)', 'default' => '30'],
-            'ops.order.waiting_l3_minutes' => ['group' => 'ops', 'label' => 'Order-waiting L3 (minutes)', 'default' => '60'],
-            'ops.order.in_progress_hours' => ['group' => 'ops', 'label' => 'Order in-progress too-long (hours)', 'default' => '4'],
-            'ops.order.credentials_unopened_hours' => ['group' => 'ops', 'label' => 'Customer credentials unopened (hours)', 'default' => '24'],
-            'ops.reward.approved_unpaid_hours' => ['group' => 'ops', 'label' => 'Approved reward unpaid (hours)', 'default' => '72'],
-            'ops.escalation.high_after_minutes' => ['group' => 'ops', 'label' => 'Escalate to High after (minutes open)', 'default' => '30'],
-            'ops.escalation.critical_after_minutes' => ['group' => 'ops', 'label' => 'Escalate to Critical after (minutes open)', 'default' => '60'],
+            'ops.order.unviewed_minutes' => ['group' => 'ops', 'label' => 'Order-unviewed alert (minutes)', 'default' => '15', 'integer' => true, 'min' => 1, 'max' => 1440],
+            'ops.order.waiting_l1_minutes' => ['group' => 'ops', 'label' => 'Order-waiting L1 (minutes)', 'default' => '15', 'integer' => true, 'min' => 1, 'max' => 1440],
+            'ops.order.waiting_l2_minutes' => ['group' => 'ops', 'label' => 'Order-waiting L2 (minutes)', 'default' => '30', 'integer' => true, 'min' => 1, 'max' => 1440],
+            'ops.order.waiting_l3_minutes' => ['group' => 'ops', 'label' => 'Order-waiting L3 (minutes)', 'default' => '60', 'integer' => true, 'min' => 1, 'max' => 10080],
+            'ops.order.in_progress_hours' => ['group' => 'ops', 'label' => 'Order in-progress too-long (hours)', 'default' => '4', 'integer' => true, 'min' => 1, 'max' => 168],
+            'ops.order.credentials_unopened_hours' => ['group' => 'ops', 'label' => 'Customer credentials unopened (hours)', 'default' => '24', 'integer' => true, 'min' => 1, 'max' => 720],
+            'ops.reward.claim_awaiting_approval_days' => ['group' => 'ops', 'label' => 'Reward claim awaiting approval (days)', 'default' => '7', 'integer' => true, 'min' => 1, 'max' => 90],
+            'ops.reward.approved_unpaid_hours' => ['group' => 'ops', 'label' => 'Approved reward unpaid (hours)', 'default' => '72', 'integer' => true, 'min' => 1, 'max' => 720],
+            'ops.escalation.high_after_minutes' => ['group' => 'ops', 'label' => 'Escalate to High after (minutes open)', 'default' => '30', 'integer' => true, 'min' => 1, 'max' => 10080],
+            'ops.escalation.critical_after_minutes' => ['group' => 'ops', 'label' => 'Escalate to Critical after (minutes open)', 'default' => '60', 'integer' => true, 'min' => 1, 'max' => 10080],
             'ops.reminders.enabled' => ['group' => 'ops', 'label' => 'Send reminder notifications to admins', 'default' => '1'],
-            'ops.reminders.digest_minutes' => ['group' => 'ops', 'label' => 'Reminder digest interval (minutes)', 'default' => '60'],
+            'ops.reminders.digest_minutes' => ['group' => 'ops', 'label' => 'Reminder digest interval (minutes)', 'default' => '60', 'integer' => true, 'min' => 5, 'max' => 1440],
         ];
     }
 

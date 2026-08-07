@@ -101,7 +101,9 @@ class AdminMilestoneAdminUpdatesTest extends TestCase
         $this->actingAs($this->admin);
         $res = Livewire::test(RewardsOverviewWidget::class)->assertOk();
         $res->assertSeeText('Claims awaiting approval');
+        $res->assertSeeText('Claims overdue for approval');
         $res->assertSeeText('Awaiting payment');
+        $res->assertSeeText('Approved rewards overdue for payment');
         $res->assertSeeText('Paid this month');
         $res->assertSeeText('£50.00'); // paid this month
         $res->assertSeeText('Total rewards paid');

@@ -37,6 +37,67 @@
                 </div>
             @endif
 
+            @php $meta = (array) ($item->meta ?? []); @endphp
+            @if(! empty($meta['reward_id']) || ! empty($meta['member_name']))
+                <div style="margin-top:1.25rem;padding:1rem;border:1px solid #e2e8f0;border-radius:.5rem" data-testid="ops-item-reward-context">
+                    <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;color:#64748b;margin-bottom:.75rem">Reward context</div>
+                    <dl style="display:grid;grid-template-columns:160px 1fr;gap:.35rem 1rem;margin:0;font-size:.9rem">
+                        @if(! empty($meta['member_name']))
+                            <dt style="color:#64748b">Rewards Member</dt>
+                            <dd style="margin:0" data-testid="ops-reward-member">{{ $meta['member_name'] }}</dd>
+                        @endif
+                        @if(! empty($meta['reward_id']))
+                            <dt style="color:#64748b">Reward</dt>
+                            <dd style="margin:0" data-testid="ops-reward-id">#{{ $meta['reward_id'] }}</dd>
+                        @endif
+                        @if(! empty($meta['milestone_tier_title']) || ! empty($meta['milestone_threshold']))
+                            <dt style="color:#64748b">Milestone</dt>
+                            <dd style="margin:0" data-testid="ops-reward-milestone">
+                                {{ $meta['milestone_tier_title'] ?? 'Tier' }}
+                                @if(! empty($meta['milestone_threshold']))
+                                    (threshold {{ $meta['milestone_threshold'] }})
+                                @endif
+                            </dd>
+                        @endif
+                        @if(! empty($meta['amount_formatted']))
+                            <dt style="color:#64748b">Amount</dt>
+                            <dd style="margin:0" data-testid="ops-reward-amount">{{ $meta['amount_formatted'] }}</dd>
+                        @endif
+                        @if(isset($meta['bonus_amount_minor']) && (int) $meta['bonus_amount_minor'] > 0)
+                            <dt style="color:#64748b">Save &amp; Grow bonus</dt>
+                            <dd style="margin:0" data-testid="ops-reward-bonus">{{ $meta['bonus_amount_formatted'] ?? ('£'.number_format(((int) $meta['bonus_amount_minor']) / 100, 2)) }}</dd>
+                        @endif
+                        @if(! empty($meta['claimed_at']))
+                            <dt style="color:#64748b">Claimed</dt>
+                            <dd style="margin:0" data-testid="ops-reward-claimed">{{ \Illuminate\Support\Carbon::parse($meta['claimed_at'])->diffForHumans() }}</dd>
+                        @endif
+                        @if(! empty($meta['approved_at']))
+                            <dt style="color:#64748b">Approved</dt>
+                            <dd style="margin:0" data-testid="ops-reward-approved">{{ \Illuminate\Support\Carbon::parse($meta['approved_at'])->diffForHumans() }}</dd>
+                        @endif
+                        @if(! empty($meta['reward_status']))
+                            <dt style="color:#64748b">Status</dt>
+                            <dd style="margin:0" data-testid="ops-reward-status">{{ $meta['reward_status'] }}</dd>
+                        @endif
+                        @if(isset($meta['outstanding_days']))
+                            <dt style="color:#64748b">Outstanding</dt>
+                            <dd style="margin:0" data-testid="ops-reward-outstanding">{{ $meta['outstanding_days'] }} days</dd>
+                        @elseif(isset($meta['outstanding_hours']))
+                            <dt style="color:#64748b">Outstanding</dt>
+                            <dd style="margin:0" data-testid="ops-reward-outstanding">{{ $meta['outstanding_hours'] }} hours</dd>
+                        @endif
+                    </dl>
+                    <div style="margin-top:1rem;display:flex;gap:.75rem;flex-wrap:wrap">
+                        @if(! empty($meta['reward_admin_path']))
+                            <a href="{{ $meta['reward_admin_path'] }}" data-testid="ops-link-reward" style="color:#1d4ed8;font-weight:600;text-decoration:underline">Open reward</a>
+                        @endif
+                        @if(! empty($meta['member_admin_path']))
+                            <a href="{{ $meta['member_admin_path'] }}" data-testid="ops-link-member" style="color:#1d4ed8;font-weight:600;text-decoration:underline">Open member</a>
+                        @endif
+                    </div>
+                </div>
+            @endif
+
             <div style="margin-top:1.5rem" data-testid="ops-item-audit">
                 <h3 style="font-size:.9rem;text-transform:uppercase;letter-spacing:.08em;color:#64748b;margin:0 0 .75rem">Audit history</h3>
                 <ol style="list-style:none;padding:0;margin:0;border-left:2px solid #e2e8f0">

@@ -171,6 +171,11 @@
         {{-- Rewards summary --}}
         <div class="grid" style="margin-top:1rem" data-testid="rewards-summary">
             <div class="card">
+                <h2>Available now</h2>
+                <div class="value" data-testid="reward-available">£{{ number_format($stats['available_reward_minor'] / 100, 2) }}</div>
+                <div class="value-sub">Ready to claim</div>
+            </div>
+            <div class="card">
                 <h2>Pending reward</h2>
                 <div class="value" data-testid="reward-pending">£{{ number_format($stats['pending_reward_minor'] / 100, 2) }}</div>
                 <div class="value-sub">Awaiting admin approval</div>
@@ -194,23 +199,33 @@
 
         <div class="grid2">
             {{-- Reward progress --}}
-            <div class="card">
-                <h2>Next milestone</h2>
-                @if ($stats['next_rule'])
+            <div class="card" data-testid="dashboard-next-reward-card">
+                <h2>Next reward</h2>
+                @if ($stats['progress_target'])
                     @php
                         $pct = $stats['progress_target'] > 0
                             ? min(100, round(($stats['progress_current'] / $stats['progress_target']) * 100))
                             : 0;
+                        $nextAmt = $stats['progress_next_amount_minor'] ?? 0;
+                        $bonus = $stats['progress_bonus_amount_minor'] ?? 0;
                     @endphp
-                    <div class="value" data-testid="milestone-progress">{{ $stats['progress_current'] }} / {{ $stats['progress_target'] }} referrals</div>
+                    <div class="value" data-testid="milestone-progress">{{ $stats['progress_current'] }} / {{ $stats['progress_target'] }} approved referrals</div>
                     <div class="progress"><div style="width:{{ $pct }}%"></div></div>
                     <div class="value-sub" data-testid="milestone-remaining">
-                        {{ $stats['progress_remaining'] }} {{ \Illuminate\Support\Str::plural('referral', $stats['progress_remaining']) }}
-                        until your next {{ $stats['next_rule']->amountFormatted() }} reward.
+                        £{{ number_format($nextAmt / 100, 0) }} at {{ $stats['progress_target'] }} referrals ·
+                        {{ $stats['progress_remaining'] }} more to go
                     </div>
+                    @if ($bonus > 0)
+                        <div class="value-sub" style="color:#78350f;margin-top:.35rem" data-testid="milestone-save-and-grow">
+                            Save &amp; Grow: earn an extra £{{ number_format($bonus / 100, 0) }}
+                        </div>
+                    @endif
+                    <a href="{{ route('ambassador.milestones') }}" class="btn-primary"
+                       data-testid="dashboard-view-milestones"
+                       style="margin-top:.75rem;">View Reward Milestones</a>
                 @else
                     <div class="value" data-testid="milestone-progress">—</div>
-                    <div class="value-sub">No active reward rules yet.</div>
+                    <div class="value-sub">No active reward tiers yet.</div>
                 @endif
             </div>
 

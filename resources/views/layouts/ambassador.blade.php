@@ -144,8 +144,14 @@
         </div>
         <a href="{{ route('ambassador.dashboard') }}" data-testid="drawer-nav-dashboard"
            onclick="window.aioDrawer && window.aioDrawer.close()">My Rewards</a>
+        <a href="{{ route('ambassador.milestones') }}" data-testid="drawer-nav-milestones"
+           onclick="window.aioDrawer && window.aioDrawer.close()">Reward Milestones</a>
+        <a href="{{ route('ambassador.referrals') }}" data-testid="drawer-nav-referrals"
+           onclick="window.aioDrawer && window.aioDrawer.close()">My Referrals</a>
+        <a href="{{ route('ambassador.rewards.history') }}" data-testid="drawer-nav-history"
+           onclick="window.aioDrawer && window.aioDrawer.close()">Reward History</a>
         <a href="{{ route('ambassador.security') }}" data-testid="drawer-nav-security"
-           onclick="window.aioDrawer && window.aioDrawer.close()">Account security</a>
+           onclick="window.aioDrawer && window.aioDrawer.close()">Account Security</a>
         @if (auth()->user()?->hasAnyRole(\App\Enums\Role::panelRoles()))
             <a href="/admin" data-testid="drawer-nav-admin-access" style="color:#fef3c7"
                onclick="window.aioDrawer && window.aioDrawer.close()">Admin Access</a>
@@ -164,7 +170,10 @@
                 @include('partials.logo', ['variant' => 'dark', 'height' => 42, 'testid' => 'brand-logo-member'])
             </div>
             <a href="{{ route('ambassador.dashboard') }}" data-testid="nav-dashboard">My Rewards</a>
-            <a href="{{ route('ambassador.security') }}" data-testid="nav-security">Account security</a>
+            <a href="{{ route('ambassador.milestones') }}" data-testid="nav-milestones">Reward Milestones</a>
+            <a href="{{ route('ambassador.referrals') }}" data-testid="nav-referrals">My Referrals</a>
+            <a href="{{ route('ambassador.rewards.history') }}" data-testid="nav-history">Reward History</a>
+            <a href="{{ route('ambassador.security') }}" data-testid="nav-security">Account Security</a>
             @if (auth()->user()?->hasAnyRole(\App\Enums\Role::panelRoles()))
                 <a href="/admin" data-testid="nav-admin-access" style="color:#fef3c7">Admin Access</a>
             @endif

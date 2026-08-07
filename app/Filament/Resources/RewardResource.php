@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Domain\Rewards\MilestoneProgressionService;
 use App\Domain\Rewards\RewardsEngine;
 use App\Filament\Resources\RewardResource\Pages;
 use App\Models\Reward;
@@ -43,14 +44,37 @@ class RewardResource extends Resource
                 TextEntry::make('id')->label('Reward ID'),
                 TextEntry::make('ambassadorProfile.user.name')->label('Ambassador'),
                 TextEntry::make('ambassadorProfile.user.email')->label('Email')->copyable(),
-                TextEntry::make('rule.name')->label('Rule')->placeholder('—'),
-                TextEntry::make('milestone_index')->label('Milestone'),
+                TextEntry::make('origin')->badge()
+                    ->formatStateUsing(fn (Reward $r) => match ($r->origin) {
+                        'milestone_claim' => 'Milestone claim',
+                        'legacy_rule' => 'Legacy rule',
+                        default => (string) $r->origin,
+                    }),
+                TextEntry::make('tier.title')->label('Milestone tier')->placeholder('—'),
+                TextEntry::make('milestone_index')->label('Threshold snapshot'),
+                TextEntry::make('cycle_number')->label('Cycle')->placeholder('—'),
+                TextEntry::make('rule.name')->label('Legacy rule')->placeholder('—'),
                 TextEntry::make('triggerConversion.id')->label('Trigger conversion')->placeholder('—'),
                 TextEntry::make('amount_minor')->label('Amount')
                     ->formatStateUsing(fn (Reward $r) => $r->amountFormatted()),
                 TextEntry::make('status')->badge()
                     ->color(fn (Reward $r) => $r->statusColor())
                     ->formatStateUsing(fn (Reward $r) => $r->statusLabel()),
+                TextEntry::make('reject_disposition')->label('Rejection outcome')
+                    ->formatStateUsing(fn (Reward $r) => match ($r->reject_disposition) {
+                        'release' => 'Released allocations',
+                        'consume' => 'Consumed cycle',
+                        default => $r->reject_disposition ?? '—',
+                    })->placeholder('—'),
+            ])->columns(2),
+
+            Section::make('Allocations')->schema([
+                TextEntry::make('allocations_count')
+                    ->label('Referrals allocated')
+                    ->state(fn (Reward $r) => $r->allocations()->count()),
+                TextEntry::make('active_allocations_count')
+                    ->label('Currently active')
+                    ->state(fn (Reward $r) => $r->allocations()->whereNotNull('active_marker')->count()),
             ])->columns(2),
 
             Section::make('Timeline')->schema([
@@ -80,14 +104,23 @@ class RewardResource extends Resource
             ->columns([
                 TextColumn::make('created_at')->label('When')->dateTime()->sortable(),
                 TextColumn::make('ambassadorProfile.user.email')->label('Ambassador')->searchable(),
-                TextColumn::make('rule.name')->label('Rule')->placeholder('—')->searchable(),
-                TextColumn::make('milestone_index')->label('Milestone')->sortable(),
-                TextColumn::make('trigger_conversion_id')->label('Trigger conv.')->placeholder('—')->toggleable(),
+                TextColumn::make('origin')->badge()->toggleable(),
+                TextColumn::make('tier.title')->label('Tier')->placeholder('—')->searchable(),
+                TextColumn::make('cycle_number')->label('Cycle')->sortable()->toggleable(),
+                TextColumn::make('rule.name')->label('Legacy rule')->placeholder('—')->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('milestone_index')->label('Threshold')->sortable()->toggleable(),
                 TextColumn::make('amount_minor')->label('Amount')
                     ->formatStateUsing(fn (Reward $r) => $r->amountFormatted())->sortable(),
                 TextColumn::make('status')->badge()
                     ->color(fn (Reward $r) => $r->statusColor())
                     ->formatStateUsing(fn (Reward $r) => $r->statusLabel()),
+                TextColumn::make('reject_disposition')->label('Rejection')->placeholder('—')
+                    ->formatStateUsing(fn (Reward $r) => match ($r->reject_disposition) {
+                        'release' => 'Released',
+                        'consume' => 'Consumed',
+                        default => '—',
+                    })
+                    ->toggleable(),
                 TextColumn::make('approvedBy.email')->label('Approved by')->placeholder('—')->toggleable(),
                 TextColumn::make('paidBy.email')->label('Paid by')->placeholder('—')->toggleable(),
                 TextColumn::make('approved_at')->dateTime()->toggleable(isToggledHiddenByDefault: true),
@@ -116,13 +149,30 @@ class RewardResource extends Resource
                         }
                     }),
                 Action::make('reject')
-                    ->label('Reject')
-                    ->icon('heroicon-o-x-circle')->color('gray')
+                    ->label('Reject (release)')
+                    ->icon('heroicon-o-arrow-uturn-left')->color('gray')
                     ->visible(fn (Reward $r) => in_array($r->status, ['pending_approval', 'approved'], true))
-                    ->schema([Textarea::make('note')->maxLength(500)])
-                    ->action(function (Reward $r, array $data, RewardsEngine $engine) {
-                        $engine->reject($r, Auth::user(), $data['note'] ?? null);
-                        Notification::make()->title('Reward rejected')->success()->send();
+                    ->schema([Textarea::make('note')->required()->maxLength(500)
+                        ->helperText('Correctable rejection — allocations are released so legitimate referrals become eligible again.')])
+                    ->action(function (Reward $r, array $data, MilestoneProgressionService $ms, RewardsEngine $engine) {
+                        if ($r->origin === 'milestone_claim') {
+                            $ms->rejectAndRelease($r, Auth::user(), (string) $data['note']);
+                        } else {
+                            $engine->reject($r, Auth::user(), (string) $data['note']);
+                        }
+                        Notification::make()->title('Reward rejected & allocations released')->success()->send();
+                    }),
+                Action::make('rejectAndConsume')
+                    ->label('Reject (consume cycle)')
+                    ->icon('heroicon-o-no-symbol')->color('danger')
+                    ->visible(fn (Reward $r) => $r->origin === 'milestone_claim' && in_array($r->status, ['pending_approval', 'approved'], true))
+                    ->requiresConfirmation()
+                    ->modalHeading('Reject and consume the cycle')
+                    ->modalDescription('The reward is rejected and the referrals stay consumed. Use only for confirmed disqualification or abuse.')
+                    ->schema([Textarea::make('note')->required()->maxLength(500)])
+                    ->action(function (Reward $r, array $data, MilestoneProgressionService $ms) {
+                        $ms->rejectAndConsume($r, Auth::user(), (string) $data['note']);
+                        Notification::make()->title('Reward rejected & cycle consumed')->success()->send();
                     }),
                 Action::make('markPaid')
                     ->label('Mark paid')

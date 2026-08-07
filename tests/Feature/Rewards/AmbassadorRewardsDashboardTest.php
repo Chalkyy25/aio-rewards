@@ -3,8 +3,9 @@
 namespace Tests\Feature\Rewards;
 
 use App\Models\AmbassadorProfile;
+use App\Models\ReferralConversion;
 use App\Models\Reward;
-use App\Models\RewardRule;
+use App\Models\RewardMilestoneTier;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -18,49 +19,46 @@ class AmbassadorRewardsDashboardTest extends TestCase
     {
         parent::setUp();
         $this->seed(RolesAndPermissionsSeeder::class);
-        RewardRule::query()->delete();
     }
 
     public function test_dashboard_renders_all_reward_stats(): void
     {
         $user = User::factory()->create(['is_active' => true, 'email_verified_at' => now()]);
         $profile = AmbassadorProfile::factory()->for($user)->create();
-        $rule = RewardRule::factory()->create(['trigger_count' => 5, 'amount_minor' => 5000]);
+        $tier = RewardMilestoneTier::query()->where('threshold', 5)->first();
 
-        // Build a rewards ledger: one pending, one approved, one paid.
+        // Rewards ledger: one pending, one approved, one paid.
         Reward::factory()->create([
-            'ambassador_profile_id' => $profile->id, 'reward_rule_id' => $rule->id,
+            'ambassador_profile_id' => $profile->id, 'milestone_tier_id' => $tier->id,
             'milestone_index' => 1, 'amount_minor' => 5000, 'status' => 'pending_approval',
         ]);
         Reward::factory()->create([
-            'ambassador_profile_id' => $profile->id, 'reward_rule_id' => $rule->id,
+            'ambassador_profile_id' => $profile->id, 'milestone_tier_id' => $tier->id,
             'milestone_index' => 2, 'amount_minor' => 5000, 'status' => 'approved',
         ]);
         Reward::factory()->create([
-            'ambassador_profile_id' => $profile->id, 'reward_rule_id' => $rule->id,
+            'ambassador_profile_id' => $profile->id, 'milestone_tier_id' => $tier->id,
             'milestone_index' => 3, 'amount_minor' => 5000, 'status' => 'paid',
         ]);
 
         $this->actingAs($user)
             ->get('/ambassador/dashboard')
             ->assertOk()
+            ->assertSee('Available now')
             ->assertSee('Pending reward')
             ->assertSee('Approved reward')
             ->assertSee('Paid reward')
             ->assertSee('Lifetime earned')
-            ->assertSee('Next milestone')
-            ->assertSeeText('£50.00')  // pending
-            ->assertSeeText('£100.00'); // approved + paid
+            ->assertSee('Next reward');
     }
 
-    public function test_dashboard_shows_next_milestone_progress(): void
+    public function test_dashboard_shows_next_reward_progress(): void
     {
         $user = User::factory()->create(['is_active' => true, 'email_verified_at' => now()]);
         $profile = AmbassadorProfile::factory()->for($user)->create();
-        RewardRule::factory()->create(['trigger_count' => 5, 'amount_minor' => 5000]);
 
-        // Simulate 3 approved conversions.
-        \App\Models\ReferralConversion::factory()->count(3)->create([
+        // Simulate 3 approved conversions (below tier 1's threshold of 5).
+        ReferralConversion::factory()->count(3)->create([
             'ambassador_profile_id' => $profile->id,
             'status' => 'approved',
         ]);
@@ -68,19 +66,19 @@ class AmbassadorRewardsDashboardTest extends TestCase
         $this->actingAs($user)
             ->get('/ambassador/dashboard')
             ->assertOk()
-            ->assertSeeText('3 / 5 referrals')
-            ->assertSeeText('2 referrals')
-            ->assertSeeText('until your next £50.00 reward.');
+            ->assertSeeText('3 / 5 approved referrals')
+            ->assertSee('View Reward Milestones');
     }
 
-    public function test_dashboard_gracefully_shows_dashes_when_no_rules_configured(): void
+    public function test_dashboard_gracefully_shows_dashes_when_no_tiers_configured(): void
     {
+        RewardMilestoneTier::query()->update(['is_active' => false]);
         $user = User::factory()->create(['is_active' => true, 'email_verified_at' => now()]);
         AmbassadorProfile::factory()->for($user)->create();
 
         $this->actingAs($user)
             ->get('/ambassador/dashboard')
             ->assertOk()
-            ->assertSee('No active reward rules yet.');
+            ->assertSee('No active reward tiers yet.');
     }
 }

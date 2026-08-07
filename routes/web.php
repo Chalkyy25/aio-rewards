@@ -7,8 +7,11 @@ use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
 use App\Http\Controllers\AmbassadorDashboardController;
 use App\Http\Controllers\CheckoutController;
+use App\Http\Controllers\MilestonesController;
+use App\Http\Controllers\MyReferralsController;
 use App\Http\Controllers\OrderStatusController;
 use App\Http\Controllers\ReferralClickController;
+use App\Http\Controllers\RewardHistoryController;
 use App\Http\Controllers\StripeWebhookController;
 use App\Livewire\AmbassadorActivation;
 use App\Models\Package;
@@ -91,5 +94,11 @@ Route::get('/email/verify/{id}/{hash}', [EmailVerificationController::class, 've
 
 Route::middleware(['auth', 'verified'])->prefix('ambassador')->name('ambassador.')->group(function () {
     Route::get('/dashboard', [AmbassadorDashboardController::class, 'show'])->name('dashboard');
+    Route::get('/rewards/milestones', [MilestonesController::class, 'show'])->name('milestones');
+    Route::post('/rewards/milestones/{tier}/claim', [MilestonesController::class, 'claim'])
+        ->middleware('throttle:12,1')
+        ->name('milestones.claim');
+    Route::get('/rewards/history', [RewardHistoryController::class, 'show'])->name('rewards.history');
+    Route::get('/referrals', [MyReferralsController::class, 'show'])->name('referrals');
     Route::get('/security', \App\Livewire\AmbassadorSecurity::class)->name('security');
 });

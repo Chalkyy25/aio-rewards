@@ -102,7 +102,7 @@ class MemberDashboardResponsiveTest extends TestCase
         $this->assertStringContainsString('data-testid="drawer-nav-security"', $body);
         $this->assertStringContainsString('data-testid="drawer-nav-logout"', $body);
         $this->assertStringContainsString('My Rewards', $body);
-        $this->assertStringContainsString('Account security', $body);
+        $this->assertStringContainsString('Account Security', $body);
         $this->assertStringContainsString('Sign out', $body);
     }
 

@@ -32,7 +32,9 @@ class Reward extends Model
 
     protected $fillable = [
         'ambassador_profile_id', 'reward_rule_id', 'trigger_conversion_id',
-        'milestone_index', 'amount_minor', 'currency', 'status', 'note',
+        'milestone_tier_id', 'milestone_index', 'cycle_number', 'origin',
+        'tier_snapshot', 'idempotency_key', 'reject_disposition',
+        'amount_minor', 'currency', 'status', 'note',
         'approved_by_user_id', 'paid_by_user_id', 'rejected_by_user_id', 'reversed_by_user_id',
         'approved_at', 'paid_at', 'rejected_at', 'reversed_at',
     ];
@@ -42,11 +44,25 @@ class Reward extends Model
         return [
             'amount_minor' => 'integer',
             'milestone_index' => 'integer',
+            'cycle_number' => 'integer',
+            'tier_snapshot' => 'array',
             'approved_at' => 'datetime',
             'paid_at' => 'datetime',
             'rejected_at' => 'datetime',
             'reversed_at' => 'datetime',
         ];
+    }
+
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<RewardMilestoneTier, $this> */
+    public function tier(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(RewardMilestoneTier::class, 'milestone_tier_id');
+    }
+
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<ReferralAllocation, $this> */
+    public function allocations(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(ReferralAllocation::class, 'reward_id');
     }
 
     /** @return BelongsTo<AmbassadorProfile, $this> */

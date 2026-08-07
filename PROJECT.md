@@ -339,3 +339,44 @@ diverge (partial-unique emulation, generated columns) land.
 The project is a standard portable Laravel 12 codebase. It does **not**
 introduce any proprietary Emergent runtime dependencies. It can be exported
 to any Git host and deployed anywhere the requirements in §9 are met.
+
+---
+
+## 12. Reward Milestones & Progression (Feb 2026)
+
+New data-driven milestone ladder replaces the seeded `every_n_cash` engine
+for all new claims. Historical rows are preserved untouched.
+
+- **Migrations added**
+  - `reward_milestone_tiers` — seeded £50 @ 5 and £110 @ 10 (+£10 bonus).
+  - `referral_allocations` — ledger with `(referral_conversion_id, active_marker)` unique index.
+  - `rewards.*` — new nullable columns: `milestone_tier_id`, `cycle_number`,
+    `origin`, `tier_snapshot`, `idempotency_key`, `reject_disposition`; unique
+    on `(ambassador_profile_id, milestone_tier_id, cycle_number)` and
+    `idempotency_key`.
+  - Legacy seeded rule `Every 5 approved referrals = £50` deactivated.
+- **Domain** — `App\Domain\Rewards\MilestoneProgressionService`.
+  - `progressFor()` — computes eligible unconsumed referrals, available tier,
+    next tier, referrals remaining, bonus being built.
+  - `claim()` — atomic locked claim, idempotency key, FIFO allocation.
+  - `rejectAndRelease()` — frees allocations, referrals eligible again.
+  - `rejectAndConsume()` — cycle closed, referrals stay consumed.
+- **Member routes / views**
+  - `GET  /ambassador/rewards/milestones` — visual reward journey.
+  - `POST /ambassador/rewards/milestones/{tier}/claim` — throttled claim.
+  - `GET  /ambassador/rewards/history` — paginated reward ledger.
+  - `GET  /ambassador/referrals` — PII-safe referral list.
+- **Filament**
+  - `RewardMilestoneTierResource` — admins manage ladder tiers.
+  - `RewardResource` — extended with `Reject (release)` / `Reject (consume)`
+    actions and tier / cycle / origin / allocation columns.
+- **Financial invariants**
+  - Same qualifying referrals can never fund overlapping payouts —
+    enforced by `referral_allocations` unique partial index.
+  - Claims are idempotent per `(profile, tier, cycle)` via idempotency key
+    + composite unique index.
+  - Paid-reward reversal does not release referrals.
+  - Old rule engine cannot double-mint (seeded rule deactivated).
+- **Tests** — 40 new PHPUnit feature tests, full suite green
+  (**295 passed, 891 assertions**).
+

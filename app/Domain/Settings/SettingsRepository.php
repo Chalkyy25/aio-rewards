@@ -98,6 +98,11 @@ class SettingsRepository
             'orders.default_setup_instructions' => ['group' => 'orders', 'label' => 'Default setup instructions', 'default' => "1) Install the AIO Player from the download links below.\n2) Sign in with the credentials shown at the top.\n3) Tap Live TV and enjoy.", 'textarea' => true],
             'orders.security_reminder' => ['group' => 'orders', 'label' => 'Security reminder', 'default' => 'For your security your password is never sent by email. Save it somewhere safe from the page above.', 'textarea' => true],
 
+            // Member notifications (safe copy only — amounts/thresholds stay in the milestone domain)
+            'notifications.milestone_unlock_enabled' => ['group' => 'notifications', 'label' => 'Send milestone unlock emails', 'default' => '1'],
+            'notifications.milestone_unlock_intro' => ['group' => 'notifications', 'label' => 'Milestone unlock email intro', 'default' => '', 'textarea' => true],
+            'notifications.milestone_unlock_save_grow_helper' => ['group' => 'notifications', 'label' => 'Save & Grow helper text', 'default' => "It's now available to claim in AIO Rewards.", 'textarea' => true],
+
             // Provider verification (Xtream) — Super Admin only. NEVER holds secrets.
             'provider.enabled' => ['group' => 'provider', 'label' => 'Enable verification', 'default' => '1'],
             'provider.display_name' => ['group' => 'provider', 'label' => 'Provider display name', 'default' => 'AIO Media'],

@@ -47,7 +47,12 @@ class Settings extends Page implements HasForms
     public function form(Schema $schema): Schema
     {
         $repo = app(SettingsRepository::class);
-        $groups = ['branding' => 'Branding', 'public' => 'Public page content', 'orders' => 'Customer order messages'];
+        $groups = [
+            'branding' => 'Branding',
+            'public' => 'Public page content',
+            'orders' => 'Customer order messages',
+            'notifications' => 'Notifications',
+        ];
 
         $sections = [];
         foreach ($groups as $group => $title) {

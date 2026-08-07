@@ -2,8 +2,13 @@
 
 namespace App\Filament\Resources;
 
+use App\Domain\Rewards\MilestoneProgressionService;
 use App\Filament\Resources\AmbassadorResource\Pages;
+use App\Filament\Resources\AmbassadorResource\RelationManagers;
 use App\Models\AmbassadorProfile;
+use App\Models\ReferralAllocation;
+use App\Models\ReferralConversion;
+use App\Models\Reward;
 use App\Support\Audit\AuditLogger;
 use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
@@ -71,7 +76,77 @@ class AmbassadorResource extends Resource
                     ->formatStateUsing(fn ($state) => $state ? 'Flagged' : 'Clear'),
                 TextEntry::make('flagged_reason')->placeholder('—'),
             ])->columns(2),
+
+            Section::make('Reward progress')->schema([
+                TextEntry::make('active_cycle_referrals')
+                    ->label('Active cycle referrals')
+                    ->state(fn (AmbassadorProfile $r) => static::progress($r)->eligibleCount),
+                TextEntry::make('available_now')
+                    ->label('Available now')
+                    ->state(function (AmbassadorProfile $r) {
+                        $p = static::progress($r);
+                        return $p->hasClaim()
+                            ? '£'.number_format($p->availableAmountMinor / 100, 2)
+                            : '—';
+                    }),
+                TextEntry::make('next_tier')
+                    ->label('Next milestone')
+                    ->state(function (AmbassadorProfile $r) {
+                        $p = static::progress($r);
+                        return $p->nextTier
+                            ? sprintf('%s at %d referrals', $p->nextTier->title, $p->nextTier->threshold)
+                            : 'Maximum reward reached';
+                    }),
+                TextEntry::make('referrals_remaining')
+                    ->label('Referrals to next milestone')
+                    ->state(fn (AmbassadorProfile $r) => static::progress($r)->referralsRemaining),
+                TextEntry::make('bonus_available')
+                    ->label('Save & Grow bonus building')
+                    ->state(function (AmbassadorProfile $r) {
+                        $bonus = static::progress($r)->bonusBeingBuiltMinor;
+                        return $bonus > 0 ? '£'.number_format($bonus / 100, 2) : '—';
+                    }),
+                TextEntry::make('cycle_number')
+                    ->label('Current cycle')
+                    ->state(fn (AmbassadorProfile $r) => static::progress($r)->cycleNumber),
+                TextEntry::make('unallocated_referrals')
+                    ->label('Unallocated approved referrals')
+                    ->state(fn (AmbassadorProfile $r) => ReferralConversion::query()
+                        ->where('ambassador_profile_id', $r->id)
+                        ->where('status', 'approved')
+                        ->whereNotIn('id', function ($sub) {
+                            $sub->select('referral_conversion_id')
+                                ->from('referral_allocations')
+                                ->whereNotNull('active_marker');
+                        })->count()),
+                TextEntry::make('allocated_referrals')
+                    ->label('Allocated referrals')
+                    ->state(fn (AmbassadorProfile $r) => ReferralAllocation::query()
+                        ->where('ambassador_profile_id', $r->id)
+                        ->whereNotNull('active_marker')->count()),
+                TextEntry::make('lifetime_paid')
+                    ->label('Lifetime paid')
+                    ->state(fn (AmbassadorProfile $r) => '£'.number_format(
+                        ((int) Reward::query()->where('ambassador_profile_id', $r->id)
+                            ->where('status', 'paid')->sum('amount_minor')) / 100, 2)),
+                TextEntry::make('open_claim')
+                    ->label('Open claim')
+                    ->state(function (AmbassadorProfile $r) {
+                        $open = Reward::query()->where('ambassador_profile_id', $r->id)
+                            ->whereIn('status', ['pending_approval', 'approved'])
+                            ->latest()->first();
+                        if (! $open) {
+                            return '—';
+                        }
+                        return sprintf('%s (%s)', $open->amountFormatted(), $open->statusLabel());
+                    }),
+            ])->columns(3),
         ]);
+    }
+
+    private static function progress(AmbassadorProfile $r): \App\Domain\Rewards\MilestoneProgress
+    {
+        return app(MilestoneProgressionService::class)->progressFor($r);
     }
 
     public static function table(Table $table): Table
@@ -167,6 +242,17 @@ class AmbassadorResource extends Resource
             ->toolbarActions([
                 BulkActionGroup::make([]),
             ]);
+    }
+
+    /**
+     * @return array<int, class-string>
+     */
+    public static function getRelations(): array
+    {
+        return [
+            RelationManagers\RewardsRelationManager::class,
+            RelationManagers\AllocationsRelationManager::class,
+        ];
     }
 
     /**

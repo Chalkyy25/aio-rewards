@@ -2,11 +2,20 @@
 
 namespace App\Filament\Widgets;
 
+use App\Filament\Resources\AmbassadorResource;
+use App\Filament\Resources\ReferralAllocationResource;
+use App\Filament\Resources\RewardResource;
+use App\Models\ReferralAllocation;
 use App\Models\Reward;
 use Filament\Widgets\StatsOverviewWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
-use Illuminate\Support\Facades\DB;
 
+/**
+ * Reward-milestone-aware admin overview:
+ *  - Claims awaiting approval, awaiting payment
+ *  - Paid this month + lifetime
+ *  - Allocated (active) vs released allocations
+ */
 class RewardsOverviewWidget extends StatsOverviewWidget
 {
     protected static ?int $sort = 1;
@@ -16,38 +25,46 @@ class RewardsOverviewWidget extends StatsOverviewWidget
         $pendingApproval = Reward::where('status', 'pending_approval')->count();
         $awaitingPayment = Reward::where('status', 'approved')->count();
         $paidTotalMinor = (int) Reward::where('status', 'paid')->sum('amount_minor');
-
-        $topAmbassador = DB::table('rewards')
-            ->join('ambassador_profiles', 'ambassador_profiles.id', '=', 'rewards.ambassador_profile_id')
-            ->join('users', 'users.id', '=', 'ambassador_profiles.user_id')
-            ->whereIn('rewards.status', ['approved', 'paid'])
-            ->groupBy('users.email')
-            ->select('users.email', DB::raw('SUM(rewards.amount_minor) as total'))
-            ->orderByDesc('total')
-            ->limit(1)
-            ->first();
+        $paidThisMonthMinor = (int) Reward::where('status', 'paid')
+            ->whereBetween('paid_at', [now()->startOfMonth(), now()->endOfMonth()])
+            ->sum('amount_minor');
+        $activeAllocations = ReferralAllocation::query()->whereNotNull('active_marker')->count();
+        $releasedAllocations = ReferralAllocation::query()->whereNull('active_marker')->count();
 
         return [
-            Stat::make('Rewards awaiting approval', (string) $pendingApproval)
+            Stat::make('Claims awaiting approval', (string) $pendingApproval)
                 ->description('Pending approval')
                 ->color($pendingApproval > 0 ? 'warning' : 'gray')
-                ->icon('heroicon-o-clock'),
+                ->icon('heroicon-o-clock')
+                ->url(RewardResource::getUrl('index', ['tableFilters[status][value]' => 'pending_approval'])),
 
-            Stat::make('Rewards awaiting payment', (string) $awaitingPayment)
+            Stat::make('Awaiting payment', (string) $awaitingPayment)
                 ->description('Approved, needs payout')
                 ->color($awaitingPayment > 0 ? 'info' : 'gray')
-                ->icon('heroicon-o-banknotes'),
+                ->icon('heroicon-o-banknotes')
+                ->url(RewardResource::getUrl('index', ['tableFilters[status][value]' => 'approved'])),
+
+            Stat::make('Paid this month', '£'.number_format($paidThisMonthMinor / 100, 2))
+                ->description('Rolling calendar month')
+                ->color('success')
+                ->icon('heroicon-o-check-badge'),
 
             Stat::make('Total rewards paid', '£'.number_format($paidTotalMinor / 100, 2))
                 ->description('Lifetime payouts')
                 ->color('success')
-                ->icon('heroicon-o-check-badge'),
-
-            Stat::make('Top ambassador',
-                $topAmbassador ? '£'.number_format(((int) $topAmbassador->total) / 100, 2) : '—')
-                ->description($topAmbassador->email ?? 'No approvals yet')
-                ->color('primary')
                 ->icon('heroicon-o-trophy'),
+
+            Stat::make('Allocated referrals', (string) $activeAllocations)
+                ->description('Currently active in the ledger')
+                ->color('primary')
+                ->icon('heroicon-o-link')
+                ->url(ReferralAllocationResource::getUrl('index', ['tableFilters[state][value]' => 'active'])),
+
+            Stat::make('Released allocations', (string) $releasedAllocations)
+                ->description('Freed by admin rejections')
+                ->color('gray')
+                ->icon('heroicon-o-arrow-uturn-left')
+                ->url(ReferralAllocationResource::getUrl('index', ['tableFilters[state][value]' => 'released'])),
         ];
     }
 }

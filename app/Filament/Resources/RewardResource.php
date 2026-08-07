@@ -5,10 +5,13 @@ namespace App\Filament\Resources;
 use App\Domain\Rewards\MilestoneProgressionService;
 use App\Domain\Rewards\RewardsEngine;
 use App\Filament\Resources\RewardResource\Pages;
+use App\Models\ReferralAllocation;
 use App\Models\Reward;
+use App\Models\RewardMilestoneTier;
 use Filament\Actions\Action;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\Textarea;
+use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\PageRegistration;
@@ -17,6 +20,7 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
+use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use Illuminate\Support\Facades\Auth;
 
@@ -75,7 +79,33 @@ class RewardResource extends Resource
                 TextEntry::make('active_allocations_count')
                     ->label('Currently active')
                     ->state(fn (Reward $r) => $r->allocations()->whereNotNull('active_marker')->count()),
-            ])->columns(2),
+                TextEntry::make('bonus_amount_minor')
+                    ->label('Save & Grow bonus (config)')
+                    ->state(fn (Reward $r) => '£'.number_format(
+                        ((int) ($r->tier_snapshot['bonus_amount_minor'] ?? 0)) / 100, 2)),
+                TextEntry::make('base_amount_minor')
+                    ->label('Base amount (total − bonus)')
+                    ->state(fn (Reward $r) => '£'.number_format(
+                        max(0, $r->amount_minor - (int) ($r->tier_snapshot['bonus_amount_minor'] ?? 0)) / 100, 2)),
+            ])->columns(4),
+
+            Section::make('Funding referrals')->schema([
+                RepeatableEntry::make('allocations')
+                    ->label('')
+                    ->schema([
+                        TextEntry::make('referral_conversion_id')->label('Conversion'),
+                        TextEntry::make('cycle_number')->label('Cycle'),
+                        TextEntry::make('state')
+                            ->state(fn (ReferralAllocation $a) => $a->isActive() ? 'Active' : 'Released')
+                            ->badge()
+                            ->color(fn (ReferralAllocation $a) => $a->isActive() ? 'success' : 'gray'),
+                        TextEntry::make('allocated_at')->dateTime(),
+                        TextEntry::make('released_at')->dateTime()->placeholder('—'),
+                        TextEntry::make('release_reason')->placeholder('—'),
+                    ])
+                    ->columns(6)
+                    ->contained(false),
+            ])->visible(fn (Reward $r) => $r->allocations()->exists()),
 
             Section::make('Timeline')->schema([
                 TextEntry::make('created_at')->dateTime(),
@@ -129,12 +159,30 @@ class RewardResource extends Resource
             ->defaultSort('created_at', 'desc')
             ->filters([
                 SelectFilter::make('status')->options([
-                    'pending_approval' => 'Pending approval',
-                    'approved' => 'Approved',
+                    'pending_approval' => 'Awaiting approval',
+                    'approved' => 'Awaiting payment',
                     'paid' => 'Paid',
                     'rejected' => 'Rejected',
                     'reversed' => 'Reversed',
                 ]),
+                SelectFilter::make('milestone_tier_id')
+                    ->label('Milestone tier')
+                    ->options(fn () => RewardMilestoneTier::query()
+                        ->orderBy('threshold')->pluck('title', 'id')->toArray()),
+                SelectFilter::make('origin')->options([
+                    'milestone_claim' => 'Milestone claim',
+                    'legacy_rule' => 'Legacy rule',
+                ]),
+                TernaryFilter::make('save_and_grow')
+                    ->label('Save & Grow bonus?')
+                    ->queries(
+                        true: fn ($q) => $q->whereNotNull('tier_snapshot')
+                            ->whereRaw("JSON_EXTRACT(tier_snapshot, '$.bonus_amount_minor') > 0"),
+                        false: fn ($q) => $q->where(function ($q) {
+                            $q->whereNull('tier_snapshot')
+                              ->orWhereRaw("JSON_EXTRACT(tier_snapshot, '$.bonus_amount_minor') = 0");
+                        }),
+                    ),
             ])
             ->recordActions([
                 ViewAction::make(),

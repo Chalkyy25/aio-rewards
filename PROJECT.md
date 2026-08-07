@@ -361,6 +361,31 @@ allocation ledger (7 approved + £50 claim → next cycle starts at 2/5).
 Lifetime approved referrals never reset and are shown separately on the
 dashboard from active-cycle progress.
 
+## 13. Admin milestone tooling (Feb 2026)
+
+Filament admin brought fully up to date with the new reward system:
+
+- **Widgets** — `RewardsOverviewWidget` (claims awaiting approval, awaiting
+  payment, paid this month, lifetime paid, active allocations, released
+  allocations) + `MilestoneProgressionWidget` (members currently
+  progressing + per-tier members-at-N counts).
+- **New Filament resource** `ReferralAllocationResource` (`/admin/referral-allocations`).
+  Strictly read-only — `canCreate/canEdit/canDelete` all return false.
+- **AmbassadorResource** infolist now includes a `Reward progress` section
+  that reads live values from `MilestoneProgressionService::progressFor()`,
+  plus two read-only relation managers (Rewards, Referral Allocations).
+- **RewardResource** view page shows `Save & Grow bonus (config)`, base
+  amount, allocation counts and a `Funding referrals` repeatable entry with
+  the underlying allocated conversions. Table filters extended with
+  milestone tier, origin and a JSON-driven Save-&-Grow ternary filter.
+- **RewardMilestoneTierResource** — form validation now rejects
+  `bonus_amount_minor > total_reward_amount_minor`.
+- Sensitive Reward mutations (approve/reject-release/reject-consume/mark
+  paid/reverse) continue to flow through `MilestoneProgressionService` and
+  `RewardsEngine` — Filament never touches accounting columns directly.
+- New tests: `AdminMilestoneAdminUpdatesTest` (8 tests). Full suite
+  **329 passed (1016 assertions)**.
+
 - **Migrations added**
   - `reward_milestone_tiers` — seeded £50 @ 5 and £110 @ 10 (+£10 bonus).
   - `referral_allocations` — ledger with `(referral_conversion_id, active_marker)` unique index.

@@ -55,6 +55,24 @@ class AmbassadorProfile extends Model
         return $this->belongsTo(User::class);
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<Reward, $this> */
+    public function rewards(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Reward::class);
+    }
+
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<ReferralConversion, $this> */
+    public function referralConversions(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(ReferralConversion::class);
+    }
+
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<ReferralAllocation, $this> */
+    public function allocations(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(ReferralAllocation::class);
+    }
+
     public function referralUrl(): string
     {
         return url('/r/'.$this->referral_code);

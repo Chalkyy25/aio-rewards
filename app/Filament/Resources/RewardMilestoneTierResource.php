@@ -54,7 +54,15 @@ class RewardMilestoneTierResource extends Resource
                 TextInput::make('bonus_amount_minor')
                     ->label('Save & Grow bonus (minor units)')
                     ->numeric()->minValue(0)->default(0)
-                    ->helperText('Display-only figure highlighted to the member.'),
+                    ->helperText('Display-only figure highlighted to the member.')
+                    ->rules([
+                        fn (\Filament\Schemas\Components\Utilities\Get $get) => function (string $attribute, $value, \Closure $fail) use ($get) {
+                            $total = (int) ($get('total_reward_amount_minor') ?? 0);
+                            if ((int) $value > $total) {
+                                $fail('Bonus cannot exceed the total reward amount.');
+                            }
+                        },
+                    ]),
                 TextInput::make('currency')->required()->default('gbp')->maxLength(3),
                 TextInput::make('display_order')->numeric()->default(0),
             ])->columns(2),

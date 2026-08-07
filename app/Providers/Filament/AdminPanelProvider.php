@@ -64,6 +64,7 @@ class AdminPanelProvider extends PanelProvider
                 \App\Filament\Widgets\OperationsBellWidget::class,
                 \App\Filament\Widgets\OperationsOverviewWidget::class,
                 \App\Filament\Widgets\RewardsOverviewWidget::class,
+                \App\Filament\Widgets\MilestoneProgressionWidget::class,
                 \App\Filament\Widgets\RecentOrdersWidget::class,
             ])
             ->middleware([

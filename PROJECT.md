@@ -347,6 +347,20 @@ to any Git host and deployed anywhere the requirements in §9 are met.
 New data-driven milestone ladder replaces the seeded `every_n_cash` engine
 for all new claims. Historical rows are preserved untouched.
 
+**Active ladder** (data-driven, admin-editable via `/admin/milestone-tiers`):
+
+| Threshold | Total reward | Save & Grow bonus | Notes                |
+| --------- | ------------ | ------------------ | -------------------- |
+| 5         | £50          | £0                 |                      |
+| 10        | £110         | £10 cumulative     |                      |
+| 15        | £170         | £20 cumulative     |                      |
+| 20        | £235         | £35 cumulative     | **Maximum tier**     |
+
+Cash-out closes the current cycle; excess referrals roll forward via the
+allocation ledger (7 approved + £50 claim → next cycle starts at 2/5).
+Lifetime approved referrals never reset and are shown separately on the
+dashboard from active-cycle progress.
+
 - **Migrations added**
   - `reward_milestone_tiers` — seeded £50 @ 5 and £110 @ 10 (+£10 bonus).
   - `referral_allocations` — ledger with `(referral_conversion_id, active_marker)` unique index.

@@ -20,6 +20,7 @@ class AmbassadorDashboardController extends Controller
 
         $stats = [
             'approved_conversions' => 0,
+            'lifetime_approved_referrals' => 0,
             'pending_reward_minor' => 0,
             'approved_reward_minor' => 0,
             'paid_reward_minor' => 0,
@@ -31,6 +32,7 @@ class AmbassadorDashboardController extends Controller
             'progress_next_amount_minor' => null,
             'progress_bonus_amount_minor' => 0,
             'has_available_now' => false,
+            'is_max_tier_available' => false,
         ];
 
         if ($profile) {
@@ -46,10 +48,18 @@ class AmbassadorDashboardController extends Controller
             $stats['lifetime_earned_minor'] =
                 $stats['approved_reward_minor'] + $stats['paid_reward_minor'];
 
+            // Lifetime stat — never resets on cash-out. This is intentionally
+            // distinct from `approved_conversions` (which is active-cycle only).
+            $stats['lifetime_approved_referrals'] = \App\Models\ReferralConversion::query()
+                ->where('ambassador_profile_id', $profile->id)
+                ->where('status', 'approved')
+                ->count();
+
             $progress = $this->milestones->progressFor($profile);
             $stats['approved_conversions'] = $progress->eligibleCount;
             $stats['available_reward_minor'] = $progress->availableAmountMinor;
             $stats['has_available_now'] = $progress->hasClaim();
+            $stats['is_max_tier_available'] = $progress->hasClaim() && $progress->nextTier === null;
 
             if ($progress->nextTier) {
                 $stats['progress_current'] = $progress->eligibleCount;

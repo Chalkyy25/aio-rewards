@@ -130,10 +130,32 @@
     </div>
 
     {{-- Hero journey card --}}
+    @php
+        $maxTier = collect($progress->tiers)->last();
+        $isMaxAvailable = $available && $maxTier && $available->id === $maxTier->id;
+    @endphp
     <section class="journey-hero" data-testid="journey-hero">
         <p class="kicker">Your reward journey</p>
 
-        @if ($available && $next)
+        @if ($isMaxAvailable)
+            <h2 data-testid="hero-max-headline">Maximum reward unlocked</h2>
+            <p>
+                <strong>£{{ number_format($available->total_reward_amount_minor / 100, 0) }}</strong>
+                is available to claim. You've reached the maximum reward for this cycle.
+                Claim your reward to start your next journey.
+            </p>
+            <div class="cta-row">
+                <form method="POST" action="{{ route('ambassador.milestones.claim', $available) }}">
+                    @csrf
+                    <input type="hidden" name="idempotency_key"
+                           value="mc:{{ $profile->id }}:{{ $progress->cycleNumber }}:{{ $available->id }}">
+                    <button type="submit" class="btn-cash"
+                            data-testid="claim-cta-{{ $available->threshold }}">
+                        Claim £{{ number_format($available->total_reward_amount_minor / 100, 0) }}
+                    </button>
+                </form>
+            </div>
+        @elseif ($available && $next)
             <h2 data-testid="hero-available-headline">
                 £{{ number_format($available->total_reward_amount_minor / 100, 0) }} is available to claim
             </h2>
@@ -141,8 +163,8 @@
                 You have <strong>{{ $eligible }}</strong> approved referrals in this cycle.
                 Cash out now, or keep going —
                 <strong>{{ $progress->referralsRemaining }} more</strong> to unlock
-                <strong>£{{ number_format($next->total_reward_amount_minor / 100, 0) }}</strong>
-                (+£{{ number_format($next->bonus_amount_minor / 100, 0) }} Save &amp; Grow bonus).
+                <strong>£{{ number_format($next->total_reward_amount_minor / 100, 0) }}</strong>@if ($next->bonus_amount_minor > 0)
+                (+£{{ number_format($next->bonus_amount_minor / 100, 0) }} Save &amp; Grow bonus)@endif.
             </p>
             <div class="bar" aria-label="Progress toward next reward">
                 <div style="width: {{ $progress->progressPercent() }}%"></div>
@@ -167,33 +189,14 @@
                     £{{ number_format($next->total_reward_amount_minor / 100, 0) }}
                 </span>
             </div>
-        @elseif ($available && ! $next)
-            <h2 data-testid="hero-available-headline">
-                £{{ number_format($available->total_reward_amount_minor / 100, 0) }} is available to claim
-            </h2>
-            <p>
-                You have <strong>{{ $eligible }}</strong> approved referrals in this cycle.
-                This is the top reward available right now.
-            </p>
-            <div class="cta-row">
-                <form method="POST" action="{{ route('ambassador.milestones.claim', $available) }}">
-                    @csrf
-                    <input type="hidden" name="idempotency_key"
-                           value="mc:{{ $profile->id }}:{{ $progress->cycleNumber }}:{{ $available->id }}">
-                    <button type="submit" class="btn-cash"
-                            data-testid="claim-cta-{{ $available->threshold }}">
-                        Cash out £{{ number_format($available->total_reward_amount_minor / 100, 0) }}
-                    </button>
-                </form>
-            </div>
         @elseif ($next)
             <h2 data-testid="hero-progress-headline">
                 {{ $eligible }} of {{ $next->threshold }} approved referrals
             </h2>
             <p>
-                <strong>{{ $progress->referralsRemaining }} more</strong> to unlock
+                <strong>{{ $progress->referralsRemaining }} more</strong> referrals to unlock
                 <strong>£{{ number_format($next->total_reward_amount_minor / 100, 0) }}</strong>@if ($next->bonus_amount_minor > 0)
-                (includes a £{{ number_format($next->bonus_amount_minor / 100, 0) }} Save &amp; Grow bonus)@endif.
+                (+£{{ number_format($next->bonus_amount_minor / 100, 0) }} Save &amp; Grow bonus)@endif.
             </p>
             <div class="bar" aria-label="Progress toward next reward">
                 <div style="width: {{ $progress->progressPercent() }}%"></div>
@@ -215,6 +218,7 @@
                 $reached = $eligible >= $t->threshold;
                 $isAvailable = $available && $available->id === $t->id;
                 $isCurrent = ! $reached && $next && $next->id === $t->id;
+                $isMax = $maxTier && $maxTier->id === $t->id;
                 $classes = 'tier-card';
                 if ($isAvailable) $classes .= ' available';
                 elseif ($isCurrent) $classes .= ' current';
@@ -230,6 +234,10 @@
                     <span class="badge current">Reached</span>
                 @else
                     <span class="badge locked">Locked</span>
+                @endif
+                @if ($isMax)
+                    <span class="badge bonus" data-testid="tier-{{ $t->threshold }}-max-badge"
+                          style="margin-left:.35rem">MAX REWARD</span>
                 @endif
                 <h3>{{ $t->title }}</h3>
                 <div class="amount">£{{ number_format($t->total_reward_amount_minor / 100, 0) }}</div>
@@ -250,12 +258,15 @@
             <div class="journey-empty">No reward tiers are configured yet.</div>
         @endforelse
 
-        <div class="tier-card locked" data-testid="tier-card-more-coming">
-            <span class="badge locked">Soon</span>
-            <h3>More rewards coming</h3>
-            <div style="color:#64748b;font-size:.9rem;margin-top:.5rem">
-                Additional tiers will appear here as they’re launched.
+        @if ($isMaxAvailable)
+            <div class="tier-card locked" data-testid="tier-card-max-cycle-note">
+                <span class="badge current">Max cycle</span>
+                <h3>Maximum reward reached</h3>
+                <div style="color:#64748b;font-size:.9rem;margin-top:.5rem">
+                    Claim your reward to start your next journey. The ladder resets and you can climb it again.
+                </div>
             </div>
-        </div>
+        @endif
     </div>
 @endsection
+

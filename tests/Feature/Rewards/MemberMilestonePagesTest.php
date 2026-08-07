@@ -68,7 +68,12 @@ class MemberMilestonePagesTest extends TestCase
         $res->assertSeeText('Reward Milestones');
         $res->assertSee('data-testid="tier-card-5"', false);
         $res->assertSee('data-testid="tier-card-10"', false);
-        $res->assertSee('data-testid="tier-card-more-coming"', false);
+        $res->assertSee('data-testid="tier-card-15"', false);
+        $res->assertSee('data-testid="tier-card-20"', false);
+        $res->assertSee('data-testid="tier-20-max-badge"', false);
+        // Fake "More rewards coming" filler card should not appear on the
+        // final ladder — 20 is the max.
+        $res->assertDontSee('data-testid="tier-card-more-coming"', false);
     }
 
     public function test_milestones_page_shows_current_state_below_threshold(): void

@@ -162,9 +162,17 @@
                 <div class="value-sub">Awaiting purchase (Phase 3+)</div>
             </div>
             <div class="card">
-                <h2>Approved referrals</h2>
+                <h2>Approved this cycle</h2>
                 <div class="value" data-testid="stat-approved">{{ number_format($stats['approved_conversions']) }}</div>
-                <div class="value-sub">Cleared refund window</div>
+                <div class="value-sub">In your current reward cycle</div>
+            </div>
+        </div>
+
+        <div class="grid" style="margin-top:1rem">
+            <div class="card">
+                <h2>Lifetime approved referrals</h2>
+                <div class="value" data-testid="stat-lifetime-approved">{{ number_format($stats['lifetime_approved_referrals']) }}</div>
+                <div class="value-sub">Never resets on cash-out</div>
             </div>
         </div>
 
@@ -201,7 +209,16 @@
             {{-- Reward progress --}}
             <div class="card" data-testid="dashboard-next-reward-card">
                 <h2>Next reward</h2>
-                @if ($stats['progress_target'])
+                @if ($stats['is_max_tier_available'])
+                    <div class="value" data-testid="milestone-progress">Maximum reward unlocked</div>
+                    <div class="value-sub" data-testid="milestone-remaining">
+                        £{{ number_format($stats['available_reward_minor'] / 100, 0) }} is available to claim.
+                        This is the top of the ladder — claim to start your next cycle.
+                    </div>
+                    <a href="{{ route('ambassador.milestones') }}" class="btn-primary"
+                       data-testid="dashboard-view-milestones"
+                       style="margin-top:.75rem;">View Reward Milestones</a>
+                @elseif ($stats['progress_target'])
                     @php
                         $pct = $stats['progress_target'] > 0
                             ? min(100, round(($stats['progress_current'] / $stats['progress_target']) * 100))

@@ -188,6 +188,7 @@ class RewardsMemberTerminologyTest extends TestCase
         // Route names
         $this->assertTrue(Route::has('ambassador.dashboard'));
         $this->assertTrue(Route::has('ambassador.security'));
+        $this->assertTrue(Route::has('ambassador.payout-settings'));
         $this->assertTrue(Route::has('activate'));
 
         // URIs (route path unchanged; host may vary per environment)

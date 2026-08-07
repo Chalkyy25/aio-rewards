@@ -112,6 +112,20 @@
         Rewards dashboard — share your link. Every completed purchase counts toward your next reward.
     </p>
 
+    @if (! empty($needsPayoutDetails))
+        <div data-testid="payout-details-prompt"
+             style="margin-top:1.25rem;background:#fef3c7;border:1px solid #f59e0b;border-radius:.75rem;padding:1rem 1.25rem">
+            <div style="font-weight:600;color:#92400e;margin-bottom:.35rem">Reward ready for payment</div>
+            <p style="margin:0 0 .75rem;color:#78350f">
+                Add your payout details to receive your reward.
+            </p>
+            <a href="{{ route('ambassador.payout-settings') }}" data-testid="payout-details-prompt-cta"
+               style="display:inline-block;padding:.55rem 1rem;background:#0f172a;color:#fff;border-radius:.5rem;text-decoration:none;font-weight:600">
+                Open Payout Settings
+            </a>
+        </div>
+    @endif
+
     @if ($profile)
         {{-- Referral link + share --}}
         <div class="card" style="margin-top:1.5rem">

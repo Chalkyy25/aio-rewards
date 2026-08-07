@@ -258,19 +258,28 @@ class OperationsScanner
         $threshold = now()->subHours($hours);
 
         $q = Reward::query()
+            ->with(['ambassadorProfile.payoutProfile'])
             ->where('status', 'approved')
             ->whereNull('paid_at')
             ->where('approved_at', '<=', $threshold)
             ->get();
 
         foreach ($q as $r) {
+            $configured = (bool) $r->ambassadorProfile?->hasConfiguredPayoutMethod();
+            $method = $r->ambassadorProfile?->payoutProfile?->preferred_method?->value;
+
             yield new OperationsSpec(
                 type: OperationsType::RewardApprovedAwaitingPayment,
                 dedupeKey: 'rewards.approved_awaiting_payment:'.$r->id,
                 title: 'Reward #'.$r->id.' approved but unpaid for '.$hours.'+ hours',
                 summary: 'Approved '.optional($r->approved_at)->diffForHumans().'. Please pay out.',
                 subject: $r,
-                meta: ['threshold_hours' => $hours],
+                // Safe operational flags only — never bank/PayPal secrets.
+                meta: [
+                    'threshold_hours' => $hours,
+                    'payout_configured' => $configured,
+                    'preferred_payout_method' => $method,
+                ],
             );
         }
     }

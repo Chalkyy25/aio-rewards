@@ -150,6 +150,8 @@
            onclick="window.aioDrawer && window.aioDrawer.close()">My Referrals</a>
         <a href="{{ route('ambassador.rewards.history') }}" data-testid="drawer-nav-history"
            onclick="window.aioDrawer && window.aioDrawer.close()">Reward History</a>
+        <a href="{{ route('ambassador.payout-settings') }}" data-testid="drawer-nav-payout-settings"
+           onclick="window.aioDrawer && window.aioDrawer.close()">Payout Settings</a>
         <a href="{{ route('ambassador.security') }}" data-testid="drawer-nav-security"
            onclick="window.aioDrawer && window.aioDrawer.close()">Account Security</a>
         @if (auth()->user()?->hasAnyRole(\App\Enums\Role::panelRoles()))
@@ -173,6 +175,7 @@
             <a href="{{ route('ambassador.milestones') }}" data-testid="nav-milestones">Reward Milestones</a>
             <a href="{{ route('ambassador.referrals') }}" data-testid="nav-referrals">My Referrals</a>
             <a href="{{ route('ambassador.rewards.history') }}" data-testid="nav-history">Reward History</a>
+            <a href="{{ route('ambassador.payout-settings') }}" data-testid="nav-payout-settings">Payout Settings</a>
             <a href="{{ route('ambassador.security') }}" data-testid="nav-security">Account Security</a>
             @if (auth()->user()?->hasAnyRole(\App\Enums\Role::panelRoles()))
                 <a href="/admin" data-testid="nav-admin-access" style="color:#fef3c7">Admin Access</a>
@@ -184,7 +187,13 @@
             </form>
         </aside>
         <main>
-            @yield('content')
+            {{-- Livewire full-page components (#[Layout]) render into $slot;
+                 classic Blade @extends pages use @section('content'). --}}
+            @isset($slot)
+                {{ $slot }}
+            @else
+                @yield('content')
+            @endif
         </main>
     </div>
 

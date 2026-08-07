@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Domain\Rewards\MilestoneProgressionService;
+use App\Enums\PayoutMethod;
 use App\Filament\Resources\AmbassadorResource\Pages;
 use App\Filament\Resources\AmbassadorResource\RelationManagers;
 use App\Models\AmbassadorProfile;
@@ -75,6 +76,44 @@ class AmbassadorResource extends Resource
                     ->color(fn ($state) => $state ? 'warning' : 'success')
                     ->formatStateUsing(fn ($state) => $state ? 'Flagged' : 'Clear'),
                 TextEntry::make('flagged_reason')->placeholder('—'),
+            ])->columns(2),
+
+            Section::make('Payout Details')->schema([
+                TextEntry::make('payout_method')
+                    ->label('Preferred payout method')
+                    ->state(fn (AmbassadorProfile $r) => $r->payoutProfile?->preferred_method?->label() ?? 'Not configured'),
+                TextEntry::make('payout_configured')
+                    ->label('Details configured')
+                    ->state(fn (AmbassadorProfile $r) => $r->hasConfiguredPayoutMethod() ? 'Yes' : 'No')
+                    ->badge()
+                    ->color(fn (AmbassadorProfile $r) => $r->hasConfiguredPayoutMethod() ? 'success' : 'warning'),
+                TextEntry::make('payout_updated_at')
+                    ->label('Last updated')
+                    ->state(fn (AmbassadorProfile $r) => $r->payoutProfile?->updated_at)
+                    ->dateTime()
+                    ->placeholder('—'),
+                TextEntry::make('payout_account_holder')
+                    ->label('Account holder')
+                    ->state(fn (AmbassadorProfile $r) => $r->payoutProfile?->preferred_method === PayoutMethod::BankTransfer
+                        ? ($r->payoutProfile->account_holder_name ?? '—')
+                        : '—')
+                    ->visible(fn (AmbassadorProfile $r) => $r->payoutProfile?->preferred_method === PayoutMethod::BankTransfer),
+                TextEntry::make('payout_masked_sort')
+                    ->label('Sort code')
+                    ->state(fn (AmbassadorProfile $r) => $r->payoutProfile?->maskedSortCode() ?? '—')
+                    ->visible(fn (AmbassadorProfile $r) => $r->payoutProfile?->preferred_method === PayoutMethod::BankTransfer),
+                TextEntry::make('payout_masked_account')
+                    ->label('Account number')
+                    ->state(fn (AmbassadorProfile $r) => $r->payoutProfile?->maskedAccountNumber() ?? '—')
+                    ->visible(fn (AmbassadorProfile $r) => $r->payoutProfile?->preferred_method === PayoutMethod::BankTransfer),
+                TextEntry::make('payout_paypal')
+                    ->label('PayPal email')
+                    ->state(fn (AmbassadorProfile $r) => $r->payoutProfile?->paypal_email ?? '—')
+                    ->visible(fn (AmbassadorProfile $r) => $r->payoutProfile?->preferred_method === PayoutMethod::PayPal),
+                TextEntry::make('payout_credit_note')
+                    ->label('Account Credit')
+                    ->state('Member selected Account Credit — no bank/PayPal destination stored.')
+                    ->visible(fn (AmbassadorProfile $r) => $r->payoutProfile?->preferred_method === PayoutMethod::AccountCredit),
             ])->columns(2),
 
             Section::make('Reward progress')->schema([

@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Domain\Rewards\MilestoneProgressionService;
 use App\Domain\Rewards\RewardsEngine;
+use App\Enums\PayoutMethod;
 use App\Filament\Resources\RewardResource\Pages;
 use App\Models\ReferralAllocation;
 use App\Models\Reward;
@@ -106,6 +107,40 @@ class RewardResource extends Resource
                     ->columns(6)
                     ->contained(false),
             ])->visible(fn (Reward $r) => $r->allocations()->exists()),
+
+            Section::make('Payout preference')->schema([
+                TextEntry::make('preferred_payout_method')
+                    ->label('Preferred payout method')
+                    ->state(fn (Reward $r) => $r->ambassadorProfile?->payoutProfile?->preferred_method?->label() ?? 'Not configured')
+                    ->badge()
+                    ->color(fn (Reward $r) => $r->ambassadorProfile?->hasConfiguredPayoutMethod() ? 'success' : 'danger'),
+                TextEntry::make('payout_configured')
+                    ->label('Configured')
+                    ->state(fn (Reward $r) => $r->ambassadorProfile?->hasConfiguredPayoutMethod() ? 'Yes' : 'No')
+                    ->badge()
+                    ->color(fn (Reward $r) => $r->ambassadorProfile?->hasConfiguredPayoutMethod() ? 'success' : 'danger'),
+                TextEntry::make('payout_warning')
+                    ->label('Warning')
+                    ->state('No payout method configured — contact the member or wait for them to add payout details before paying out, unless using an alternate manual method.')
+                    ->visible(fn (Reward $r) => ! ($r->ambassadorProfile?->hasConfiguredPayoutMethod() ?? false)),
+                TextEntry::make('payout_masked_summary')
+                    ->label('Masked details')
+                    ->state(function (Reward $r) {
+                        $payout = $r->ambassadorProfile?->payoutProfile;
+                        if (! $payout) {
+                            return '—';
+                        }
+
+                        return match ($payout->preferred_method) {
+                            PayoutMethod::BankTransfer => trim(($payout->account_holder_name ?? '').' · '
+                                .($payout->maskedSortCode() ?? '').' · '
+                                .($payout->maskedAccountNumber() ?? '')),
+                            PayoutMethod::PayPal => (string) ($payout->paypal_email ?? '—'),
+                            PayoutMethod::AccountCredit => 'Account Credit',
+                        };
+                    })
+                    ->visible(fn (Reward $r) => $r->ambassadorProfile?->hasConfiguredPayoutMethod() ?? false),
+            ])->columns(2),
 
             Section::make('Timeline')->schema([
                 TextEntry::make('created_at')->dateTime(),
@@ -226,7 +261,31 @@ class RewardResource extends Resource
                     ->label('Mark paid')
                     ->icon('heroicon-o-banknotes')->color('primary')
                     ->visible(fn (Reward $r) => $r->status === 'approved')
-                    ->schema([Textarea::make('note')->label('Payout reference / note')->maxLength(500)])
+                    ->modalHeading('Mark reward paid')
+                    ->modalDescription(function (Reward $r) {
+                        $payout = $r->ambassadorProfile?->payoutProfile;
+                        if (! $payout || ! $payout->isConfigured()) {
+                            return 'Warning: this Rewards Member has no payout method configured. Do not silently assume a destination — use an alternate manual method only if you have confirmed payment separately.';
+                        }
+
+                        return 'Preferred payout method: '.$payout->preferred_method->label()
+                            .'. This records a manual payout only — no money is sent automatically.';
+                    })
+                    ->fillForm(function (Reward $r) {
+                        $method = $r->ambassadorProfile?->payoutProfile?->preferred_method;
+
+                        return [
+                            'note' => $method
+                                ? 'Preferred method: '.$method->label()
+                                : null,
+                        ];
+                    })
+                    ->schema([
+                        Textarea::make('note')
+                            ->label('Payout reference / note')
+                            ->helperText('Record the payment reference. Prefills the member’s preferred method when available.')
+                            ->maxLength(500),
+                    ])
                     ->requiresConfirmation()
                     ->action(function (Reward $r, array $data, RewardsEngine $engine) {
                         $engine->markPaid($r, Auth::user(), $data['note'] ?? null);

@@ -37,7 +37,7 @@
             box-shadow: 0 1px 3px rgba(15,23,42,.06); }
     .card h2 { margin: 0 0 .5rem; font-size: .75rem; text-transform: uppercase;
                letter-spacing: .08em; color: #64748b; }
-    .value { font-size: 1.5rem; font-weight: 700; color: #0f172a; }
+    .value { font-size: 1.5rem; font-weight: 700; color: #0f172a; word-break: break-word; }
     .value-sub { font-size: .85rem; color: #64748b; margin-top: .25rem; }
     .referral-row { display: flex; gap: .5rem; margin-top: .5rem; flex-wrap: wrap; }
     .referral-row input { flex: 1; min-width: 240px; padding: .6rem .75rem;
@@ -61,7 +61,48 @@
     .empty { color: #94a3b8; padding: 1rem 0; }
     .progress { height: 8px; background: #f1f5f9; border-radius: 999px; overflow: hidden; margin-top:.5rem; }
     .progress > div { height: 100%; background: #0f172a; width: 0%; }
-    @media (max-width: 900px) { .grid { grid-template-columns: repeat(2,1fr); } .grid2 { grid-template-columns: 1fr; } }
+
+    /* Mobile stacked-card view for the recent clicks table. */
+    .clicks-mobile { display: none; margin-top: .75rem; }
+    .clicks-mobile .click-row {
+        display: grid; grid-template-columns: 1fr auto; gap: .35rem .75rem;
+        padding: .75rem 0; border-bottom: 1px solid #f1f5f9;
+    }
+    .clicks-mobile .click-row dt { color: #64748b; font-size: .75rem;
+        text-transform: uppercase; letter-spacing: .05em; margin: 0; }
+    .clicks-mobile .click-row dd { margin: 0; font-size: .9rem;
+        overflow: hidden; text-overflow: ellipsis; }
+    .clicks-mobile .click-row .when { grid-column: 1 / -1; color: #0f172a; font-weight: 600; }
+
+    /* ── Tablet ────────────────────────────────────────────────── */
+    @media (max-width: 1023px) {
+        .grid { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    /* ── Mobile ────────────────────────────────────────────────── */
+    @media (max-width: 767px) {
+        .grid { grid-template-columns: 1fr 1fr; gap: .75rem; }
+        .grid2 { grid-template-columns: 1fr; gap: .75rem; }
+        .card { padding: 1rem; border-radius: .75rem; }
+        .card h2 { font-size: .7rem; }
+        .value { font-size: 1.2rem; }
+        h1 { font-size: 1.5rem !important; }
+
+        /* Referral card: stack input + buttons full width. */
+        .referral-row { flex-direction: column; align-items: stretch; }
+        .referral-row input { min-width: 0; width: 100%; }
+        .referral-row .btn-primary,
+        .referral-row .btn-whatsapp { width: 100%; text-align: center; }
+
+        /* Table → hide, show stacked-card list. */
+        table.clicks { display: none; }
+        .clicks-mobile { display: block; }
+    }
+
+    /* Very narrow (small phones): 1 col for stats too. */
+    @media (max-width: 420px) {
+        .grid { grid-template-columns: 1fr; }
+    }
 </style>
 @endpush
 
@@ -212,6 +253,20 @@
                         @endforeach
                     </tbody>
                 </table>
+
+                {{-- Mobile stacked-card view (CSS hides on ≥768px). UTM
+                     source/medium are dropped on mobile per spec — the
+                     underlying data is unchanged; only the presentation
+                     differs. --}}
+                <div class="clicks-mobile" data-testid="recent-clicks-mobile">
+                    @foreach ($recentClicks as $c)
+                        <dl class="click-row">
+                            <dd class="when">{{ $c->created_at->diffForHumans() }}</dd>
+                            <dt>Referrer</dt>
+                            <dd title="{{ $c->referer_url ?: '' }}">{{ $c->referer_url ?: '—' }}</dd>
+                        </dl>
+                    @endforeach
+                </div>
             @endif
         </div>
     @else

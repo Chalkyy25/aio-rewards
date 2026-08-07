@@ -16,6 +16,23 @@ use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'public.welcome')->name('home');
 
+// Serve /favicon.ico with the correct MIME. Browsers auto-request this URL
+// on every page load and validate the magic bytes against the Content-Type.
+// The static file at public/favicon.ico is actually PNG bytes, so the web
+// server's auto-detected `image/vnd.microsoft.icon` header caused Chrome /
+// Firefox to reject the mismatch and show a blank tab icon on every page.
+Route::get('/favicon.ico', function () {
+    $path = public_path('images/aio-favicon.png');
+    if (! file_exists($path)) {
+        abort(404);
+    }
+
+    return response()->file($path, [
+        'Content-Type' => 'image/png',
+        'Cache-Control' => 'public, max-age=86400',
+    ]);
+})->name('favicon');
+
 Route::get('/packages', function () {
     return view('public.packages', ['packages' => Package::where('is_active', true)->orderBy('sort_order')->get()]);
 })->name('packages');

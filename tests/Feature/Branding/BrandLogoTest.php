@@ -82,6 +82,30 @@ class BrandLogoTest extends TestCase
         $this->assertMatchesRegularExpression('#<link[^>]+rel="apple-touch-icon"[^>]+aio-favicon\.png#', $body);
     }
 
+    public function test_favicon_ico_is_served_with_png_content_type(): void
+    {
+        // Browsers auto-fetch /favicon.ico on every page load and validate
+        // magic bytes against the Content-Type. Serving our PNG bytes under
+        // that URL must therefore advertise image/png, not the extension-
+        // guessed image/vnd.microsoft.icon that the static file server used
+        // to return — that mismatch made Chrome / Firefox reject the icon.
+        $r = $this->get('/favicon.ico');
+        $r->assertOk();
+        $r->assertHeader('Content-Type', 'image/png');
+
+        // response()->file() returns a BinaryFileResponse whose body is not
+        // populated until sending; assert against the underlying file
+        // instead of getContent().
+        $sent = $r->baseResponse instanceof \Symfony\Component\HttpFoundation\BinaryFileResponse
+            ? $r->baseResponse->getFile()->getPathname()
+            : null;
+        $this->assertNotNull($sent, 'Expected a BinaryFileResponse for /favicon.ico');
+        $bytes = file_get_contents($sent);
+        $this->assertGreaterThan(1000, strlen($bytes));
+        // First two bytes of any PNG file are 0x89 0x50 ('PNG' signature).
+        $this->assertSame("\x89P", substr($bytes, 0, 2));
+    }
+
     public function test_filament_admin_panel_registers_brand_logos(): void
     {
         /** @var \Filament\Panel $panel */

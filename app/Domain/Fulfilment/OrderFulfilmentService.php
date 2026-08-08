@@ -22,8 +22,8 @@ class OrderFulfilmentService
 {
     /** @var array<string, list<string>> */
     private const ALLOWED = [
-        'payment_received' => ['pending_setup', 'in_progress', 'cancelled', 'refunded'],
-        'pending_setup' => ['in_progress', 'cancelled', 'refunded'],
+        'payment_received' => ['pending_setup', 'in_progress', 'completed', 'cancelled', 'refunded'],
+        'pending_setup' => ['in_progress', 'completed', 'cancelled', 'refunded'],
         'in_progress' => ['awaiting_customer', 'completed', 'cancelled', 'refunded'],
         'awaiting_customer' => ['in_progress', 'completed', 'cancelled', 'refunded'],
         'completed' => ['refunded'],
@@ -32,6 +32,14 @@ class OrderFulfilmentService
         // Legacy tolerance.
         'unfulfilled' => ['payment_received', 'pending_setup', 'in_progress', 'cancelled', 'refunded'],
         'fulfilled' => ['refunded'],
+    ];
+
+    /** Fulfilment states from which an admin may complete a paid order. */
+    private const COMPLETABLE = [
+        'payment_received',
+        'pending_setup',
+        'in_progress',
+        'awaiting_customer',
     ];
 
     public function markPaymentReceived(Purchase $purchase): void
@@ -48,6 +56,59 @@ class OrderFulfilmentService
         AuditLogger::record('order.payment_received', $purchase, before: $before);
     }
 
+    /**
+     * Whether the Filament "Complete Order" action should be shown.
+     * Does not check credentials — those are validated on execute.
+     */
+    public function isEligibleForCompleteAction(Purchase $purchase): bool
+    {
+        return $purchase->status === 'paid'
+            && in_array((string) $purchase->fulfilment_status, self::COMPLETABLE, true);
+    }
+
+    /**
+     * Requirements that must be satisfied before an order can become Completed.
+     *
+     * Package only stores free-text `duration_label`, so expiry cannot be
+     * required reliably per product type. Username + password are always
+     * required for AIO Media provisioned subscriptions.
+     *
+     * @return list<string>
+     */
+    public function missingCompletionRequirements(Purchase $purchase): array
+    {
+        $missing = [];
+
+        if ($purchase->status !== 'paid') {
+            $missing[] = 'payment must be paid';
+        }
+
+        if (! filled($purchase->provisioned_username_enc)) {
+            $missing[] = 'provisioned username';
+        }
+
+        if (! filled($purchase->provisioned_password_enc)) {
+            $missing[] = 'provisioned password';
+        }
+
+        return $missing;
+    }
+
+    /**
+     * @throws DomainException when payment or required credentials are missing
+     */
+    public function assertReadyToComplete(Purchase $purchase): void
+    {
+        $missing = $this->missingCompletionRequirements($purchase);
+        if ($missing === []) {
+            return;
+        }
+
+        throw new DomainException(
+            'Cannot complete order: missing '.implode(', ', $missing).'.'
+        );
+    }
+
     public function transition(Purchase $purchase, OrderStatus $to, ?User $actor = null, bool $restoreCredit = true): void
     {
         $from = (string) $purchase->fulfilment_status;
@@ -57,6 +118,10 @@ class OrderFulfilmentService
         $allowed = self::ALLOWED[$from] ?? [];
         if (! in_array($to->value, $allowed, true)) {
             throw new DomainException(sprintf('Illegal transition %s → %s', $from, $to->value));
+        }
+
+        if ($to === OrderStatus::Completed) {
+            $this->assertReadyToComplete($purchase);
         }
 
         $stampColumn = match ($to) {

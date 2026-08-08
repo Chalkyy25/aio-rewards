@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\PayoutMethod;
 use Database\Factories\RewardFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -152,6 +153,15 @@ class Reward extends Model
         };
     }
 
+    /**
+     * Fulfilled / payable value for admin reporting.
+     * Account Credit claims: cash + snapshotted bonus. Bank / null snapshot: cash only.
+     */
+    public function adminPayableAmountMinor(): int
+    {
+        return $this->memberFacingAmountMinor();
+    }
+
     /** Payable total shown to admins (AC total when claimed as AC; cash otherwise). */
     public function adminPayableAmountFormatted(): string
     {
@@ -163,6 +173,35 @@ class Reward extends Model
         return $this->claimedAsAccountCredit()
             ? 'Account Credit Total'
             : 'Payable Total';
+    }
+
+    /**
+     * SQL expression matching {@see adminPayableAmountMinor()} for aggregates.
+     * Does not invent Account Credit for historical null snapshots.
+     */
+    public static function adminPayableAmountSql(): string
+    {
+        // Enum value is a fixed app constant ('account_credit') — safe to embed.
+        $accountCredit = PayoutMethod::AccountCredit->value;
+
+        return "CASE WHEN preferred_payout_method_snapshot = '{$accountCredit}'"
+            .' THEN amount_minor + COALESCE(account_credit_bonus_minor_snapshot, 0)'
+            .' ELSE amount_minor END';
+    }
+
+    /**
+     * Sum fulfilled/payable reward value for admin dashboards (not cash-only liability).
+     *
+     * @param Builder<Reward>|null $query
+     */
+    public static function sumAdminPayableMinor(?Builder $query = null): int
+    {
+        $query ??= static::query();
+
+        return (int) $query
+            ->toBase()
+            ->selectRaw('COALESCE(SUM('.static::adminPayableAmountSql().'), 0) as payable_sum')
+            ->value('payable_sum');
     }
 
     /**

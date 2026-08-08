@@ -28,10 +28,15 @@ class RewardsOverviewWidget extends StatsOverviewWidget
     {
         $pendingApproval = Reward::where('status', 'pending_approval')->count();
         $awaitingPayment = Reward::where('status', 'approved')->count();
-        $paidTotalMinor = (int) Reward::where('status', 'paid')->sum('amount_minor');
-        $paidThisMonthMinor = (int) Reward::where('status', 'paid')
-            ->whereBetween('paid_at', [now()->startOfMonth(), now()->endOfMonth()])
-            ->sum('amount_minor');
+        // Fulfilled member value (AC includes snapshotted bonus); not cash-only liability.
+        $paidTotalMinor = Reward::sumAdminPayableMinor(
+            Reward::query()->where('status', 'paid')
+        );
+        $paidThisMonthMinor = Reward::sumAdminPayableMinor(
+            Reward::query()
+                ->where('status', 'paid')
+                ->whereBetween('paid_at', [now()->startOfMonth(), now()->endOfMonth()])
+        );
         $activeAllocations = ReferralAllocation::query()->whereNotNull('active_marker')->count();
         $releasedAllocations = ReferralAllocation::query()->whereNull('active_marker')->count();
 

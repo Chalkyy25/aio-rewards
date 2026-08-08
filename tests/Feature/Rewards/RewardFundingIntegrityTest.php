@@ -157,7 +157,7 @@ class RewardFundingIntegrityTest extends TestCase
         app(RewardsEngine::class)->approve($reward, $this->admin);
         app(AccountCreditFulfilmentService::class)->apply($reward->fresh(), $this->admin);
 
-        $this->assertSame(5000, app(AccountCreditLedger::class)->balanceMinor($this->profile));
+        $this->assertSame(6000, app(AccountCreditLedger::class)->balanceMinor($this->profile));
 
         $allocation = ReferralAllocation::query()->where('reward_id', $reward->id)->whereNotNull('active_marker')->firstOrFail();
         $conversion = $allocation->conversion;
@@ -167,7 +167,7 @@ class RewardFundingIntegrityTest extends TestCase
         $reward->refresh();
         $this->assertSame('paid', $reward->status);
         $this->assertSame(PayoutMethod::AccountCredit->value, $reward->payment_method);
-        $this->assertSame(5000, app(AccountCreditLedger::class)->balanceMinor($this->profile), 'No automatic clawback debit');
+        $this->assertSame(6000, app(AccountCreditLedger::class)->balanceMinor($this->profile), 'No automatic clawback debit');
         $this->assertNotNull($reward->funding_compromised_at);
         $this->assertDatabaseHas('operations_items', [
             'type' => OperationsType::RewardPaidFundingCompromised->value,

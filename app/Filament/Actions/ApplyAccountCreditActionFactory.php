@@ -21,7 +21,7 @@ final class ApplyAccountCreditActionFactory
     public static function make(string $name = 'applyAccountCredit'): Action
     {
         return Action::make($name)
-            ->label(fn (Reward $r) => 'Apply '.$r->amountFormatted().' Account Credit')
+            ->label(fn (Reward $r) => 'Apply '.$r->accountCreditTotalFormatted().' Account Credit')
             ->icon('heroicon-o-wallet')
             ->color('success')
             ->visible(function (Reward $r): bool {
@@ -33,7 +33,7 @@ final class ApplyAccountCreditActionFactory
 
                 return $method === PayoutMethod::AccountCredit;
             })
-            ->modalHeading(fn (Reward $r) => 'Apply '.$r->amountFormatted().' Account Credit')
+            ->modalHeading(fn (Reward $r) => 'Apply '.$r->accountCreditTotalFormatted().' Account Credit')
             ->modalDescription(function (Reward $r) {
                 $member = $r->ambassadorProfile?->user;
                 $name = $member?->name ?? 'Unknown member';
@@ -41,15 +41,21 @@ final class ApplyAccountCreditActionFactory
                 $ledger = app(AccountCreditLedger::class);
                 $profile = $r->ambassadorProfile;
                 $current = $profile ? $ledger->balanceMinor($profile) : 0;
-                $resulting = $current + $r->amount_minor;
+                $bonus = $r->accountCreditBonusMinor();
+                $resulting = $current + $r->accountCreditTotalMinor();
                 $fmt = static function (int $minor): string {
                     return '£'.number_format($minor / 100, 2);
                 };
 
+                $bonusLine = $bonus > 0
+                    ? 'Base reward: '.$r->amountFormatted().'. Milestone bonus: '.$r->accountCreditBonusFormatted().'. '
+                    : 'Base reward: '.$r->amountFormatted().' (no milestone bonus). ';
+
                 return 'Member: '.$name.($email !== '' ? " ({$email})" : '').'. '
-                    .'Reward amount: '.$r->amountFormatted().'. '
-                    .'Current Account Credit balance: '.$fmt($current).'. '
-                    .'Resulting balance after this action: '.$fmt($resulting).'. '
+                    .$bonusLine
+                    .'Total Account Credit: '.$r->accountCreditTotalFormatted().'. '
+                    .'Current balance: '.$fmt($current).'. '
+                    .'Resulting balance: '.$fmt($resulting).'. '
                     .'This immediately credits their AIO account balance and marks the reward paid. '
                     .'Do not perform this action twice — the system blocks duplicate credits.';
             })
@@ -76,7 +82,7 @@ final class ApplyAccountCreditActionFactory
                 if ($ok) {
                     Notification::make()
                         ->title('Account Credit applied')
-                        ->body($r->amountFormatted().' credited and reward marked paid.')
+                        ->body($r->fresh()->accountCreditTotalFormatted().' credited and reward marked paid.')
                         ->success()
                         ->send();
                 } else {

@@ -17,6 +17,7 @@ use Illuminate\Support\Carbon;
  * @property ?int $trigger_conversion_id
  * @property int $milestone_index
  * @property int $amount_minor
+ * @property int $account_credit_bonus_minor_snapshot
  * @property string $currency
  * @property string $status pending_approval|approved|rejected|paid|reversed
  * @property ?Carbon $approved_at
@@ -40,7 +41,7 @@ class Reward extends Model
         'ambassador_profile_id', 'reward_rule_id', 'trigger_conversion_id',
         'milestone_tier_id', 'milestone_index', 'cycle_number', 'origin',
         'tier_snapshot', 'idempotency_key', 'reject_disposition',
-        'amount_minor', 'currency', 'status', 'note',
+        'amount_minor', 'account_credit_bonus_minor_snapshot', 'currency', 'status', 'note',
         'payment_method', 'payment_reference',
         'funding_compromised_at', 'funding_compromise_reason', 'funding_compromise_conversion_id',
         'account_credit_transaction_id',
@@ -52,6 +53,7 @@ class Reward extends Model
     {
         return [
             'amount_minor' => 'integer',
+            'account_credit_bonus_minor_snapshot' => 'integer',
             'milestone_index' => 'integer',
             'cycle_number' => 'integer',
             'tier_snapshot' => 'array',
@@ -61,6 +63,36 @@ class Reward extends Model
             'reversed_at' => 'datetime',
             'funding_compromised_at' => 'datetime',
         ];
+    }
+
+    /** Immutable promotional bonus snapshotted at claim. */
+    public function accountCreditBonusMinor(): int
+    {
+        return max(0, (int) $this->account_credit_bonus_minor_snapshot);
+    }
+
+    /** Cash reward + snapshotted Account Credit bonus. */
+    public function accountCreditTotalMinor(): int
+    {
+        return (int) $this->amount_minor + $this->accountCreditBonusMinor();
+    }
+
+    public function accountCreditTotalFormatted(): string
+    {
+        return match (strtolower($this->currency)) {
+            'gbp' => '£'.number_format($this->accountCreditTotalMinor() / 100, 2),
+            'eur' => '€'.number_format($this->accountCreditTotalMinor() / 100, 2),
+            default => strtoupper($this->currency).' '.number_format($this->accountCreditTotalMinor() / 100, 2),
+        };
+    }
+
+    public function accountCreditBonusFormatted(): string
+    {
+        return match (strtolower($this->currency)) {
+            'gbp' => '£'.number_format($this->accountCreditBonusMinor() / 100, 2),
+            'eur' => '€'.number_format($this->accountCreditBonusMinor() / 100, 2),
+            default => strtoupper($this->currency).' '.number_format($this->accountCreditBonusMinor() / 100, 2),
+        };
     }
 
     /** @return BelongsTo<RewardMilestoneTier, $this> */

@@ -155,6 +155,34 @@
                     </button>
                 </form>
             </div>
+
+            <div data-testid="reward-payout-choice" style="margin-top:1.25rem;display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+                <div style="background:#fff;border:1px solid #e2e8f0;border-radius:.75rem;padding:1rem;color:#0f172a">
+                    <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;color:#64748b">Bank Transfer</div>
+                    <div style="font-size:1.35rem;font-weight:700;margin:.35rem 0" data-testid="payout-bank-amount">
+                        £{{ number_format($available->total_reward_amount_minor / 100, 0) }} CASH
+                    </div>
+                    <p style="margin:0;font-size:.9rem;color:#475569">Receive £{{ number_format($available->total_reward_amount_minor / 100, 0) }} directly to your bank.</p>
+                </div>
+                <div style="background:#0f172a;border-radius:.75rem;padding:1rem;color:#fff">
+                    <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;opacity:.75">Account Credit</div>
+                    <div style="font-size:1.35rem;font-weight:700;margin:.35rem 0" data-testid="payout-credit-amount">
+                        £{{ number_format($available->accountCreditTotalMinor() / 100, 0) }} CREDIT
+                    </div>
+                    @if ($available->account_credit_bonus_minor > 0)
+                        <div style="font-size:.9rem;color:#86efac;margin-bottom:.35rem" data-testid="payout-credit-bonus">
+                            +£{{ number_format($available->account_credit_bonus_minor / 100, 0) }} BONUS
+                        </div>
+                    @endif
+                    <p style="margin:0;font-size:.9rem;opacity:.85">
+                        @if ($available->account_credit_bonus_minor > 0)
+                            Get an extra £{{ number_format($available->account_credit_bonus_minor / 100, 0) }} by keeping your reward as AIO Account Credit.
+                        @else
+                            Keep your reward as AIO Account Credit toward package purchases.
+                        @endif
+                    </p>
+                </div>
+            </div>
         @elseif ($available && $next)
             <h2 data-testid="hero-available-headline">
                 £{{ number_format($available->total_reward_amount_minor / 100, 0) }} is available to claim
@@ -172,6 +200,34 @@
             <div class="bar-legend">
                 <span data-testid="hero-progress-count">{{ $eligible }} / {{ $next->threshold }} referrals</span>
                 <span data-testid="hero-progress-remaining">{{ $progress->referralsRemaining }} to go</span>
+            </div>
+
+            <div data-testid="reward-payout-choice" style="margin:1.25rem 0;display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+                <div style="background:#fff;border:1px solid #e2e8f0;border-radius:.75rem;padding:1rem;color:#0f172a">
+                    <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;color:#64748b">Bank Transfer</div>
+                    <div style="font-size:1.35rem;font-weight:700;margin:.35rem 0" data-testid="payout-bank-amount">
+                        £{{ number_format($available->total_reward_amount_minor / 100, 0) }} CASH
+                    </div>
+                    <p style="margin:0;font-size:.9rem;color:#475569">Receive £{{ number_format($available->total_reward_amount_minor / 100, 0) }} directly to your bank.</p>
+                </div>
+                <div style="background:#0f172a;border-radius:.75rem;padding:1rem;color:#fff">
+                    <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;opacity:.75">Account Credit</div>
+                    <div style="font-size:1.35rem;font-weight:700;margin:.35rem 0" data-testid="payout-credit-amount">
+                        £{{ number_format($available->accountCreditTotalMinor() / 100, 0) }} CREDIT
+                    </div>
+                    @if ($available->account_credit_bonus_minor > 0)
+                        <div style="font-size:.9rem;color:#86efac;margin-bottom:.35rem" data-testid="payout-credit-bonus">
+                            +£{{ number_format($available->account_credit_bonus_minor / 100, 0) }} BONUS
+                        </div>
+                    @endif
+                    <p style="margin:0;font-size:.9rem;opacity:.85">
+                        @if ($available->account_credit_bonus_minor > 0)
+                            Get an extra £{{ number_format($available->account_credit_bonus_minor / 100, 0) }} by keeping your reward as AIO Account Credit.
+                        @else
+                            Keep your reward as AIO Account Credit toward package purchases.
+                        @endif
+                    </p>
+                </div>
             </div>
 
             <div class="cta-row">

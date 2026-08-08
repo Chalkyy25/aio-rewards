@@ -15,6 +15,7 @@ class RewardMilestoneTierFactory extends Factory
             'threshold' => 5,
             'total_reward_amount_minor' => 5000,
             'bonus_amount_minor' => 0,
+            'account_credit_bonus_minor' => 0,
             'currency' => 'gbp',
             'title' => '£50 Reward',
             'description' => 'Cash out at 5 approved referrals.',

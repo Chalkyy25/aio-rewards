@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Database\Factories\RewardMilestoneTierFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -10,6 +11,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property int $threshold
  * @property int $total_reward_amount_minor
  * @property int $bonus_amount_minor
+ * @property int $account_credit_bonus_minor
  * @property string $currency
  * @property string $title
  * @property ?string $description
@@ -20,11 +22,12 @@ use Illuminate\Database\Eloquent\Model;
  */
 class RewardMilestoneTier extends Model
 {
-    /** @use HasFactory<\Database\Factories\RewardMilestoneTierFactory> */
+    /** @use HasFactory<RewardMilestoneTierFactory> */
     use HasFactory;
 
     protected $fillable = [
         'threshold', 'total_reward_amount_minor', 'bonus_amount_minor',
+        'account_credit_bonus_minor',
         'currency', 'title', 'description', 'display_order',
         'is_active', 'is_visible', 'is_claimable',
     ];
@@ -35,6 +38,7 @@ class RewardMilestoneTier extends Model
             'threshold' => 'integer',
             'total_reward_amount_minor' => 'integer',
             'bonus_amount_minor' => 'integer',
+            'account_credit_bonus_minor' => 'integer',
             'display_order' => 'integer',
             'is_active' => 'boolean',
             'is_visible' => 'boolean',
@@ -56,6 +60,26 @@ class RewardMilestoneTier extends Model
         return '£'.number_format($this->bonus_amount_minor / 100, 0);
     }
 
+    public function accountCreditBonusFormatted(): string
+    {
+        return '£'.number_format($this->account_credit_bonus_minor / 100, 0);
+    }
+
+    /** Cash reward + this tier's Account Credit promotional bonus. */
+    public function accountCreditTotalMinor(): int
+    {
+        return (int) $this->total_reward_amount_minor + (int) $this->account_credit_bonus_minor;
+    }
+
+    public function accountCreditTotalFormatted(): string
+    {
+        return match (strtolower($this->currency)) {
+            'gbp' => '£'.number_format($this->accountCreditTotalMinor() / 100, 0),
+            'eur' => '€'.number_format($this->accountCreditTotalMinor() / 100, 0),
+            default => strtoupper($this->currency).' '.number_format($this->accountCreditTotalMinor() / 100, 0),
+        };
+    }
+
     /** @return array<string, mixed> */
     public function snapshot(): array
     {
@@ -64,6 +88,7 @@ class RewardMilestoneTier extends Model
             'threshold' => $this->threshold,
             'total_reward_amount_minor' => $this->total_reward_amount_minor,
             'bonus_amount_minor' => $this->bonus_amount_minor,
+            'account_credit_bonus_minor' => $this->account_credit_bonus_minor,
             'currency' => $this->currency,
             'title' => $this->title,
         ];

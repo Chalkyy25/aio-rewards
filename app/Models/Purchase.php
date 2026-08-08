@@ -3,11 +3,13 @@
 namespace App\Models;
 
 use App\Domain\Fulfilment\OrderStatus;
+use Database\Factories\PurchaseFactory;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -19,6 +21,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property ?string $buyer_telegram
  * @property string $delivery_method
  * @property int $amount_minor
+ * @property int $account_credit_applied_minor
+ * @property ?int $external_amount_minor
  * @property string $currency
  * @property string $status
  * @property string $fulfilment_status
@@ -28,18 +32,18 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property ?string $attribution_id
  * @property ?string $referral_code_snapshot
  * @property ?int $ambassador_profile_id_snapshot
- * @property ?\Illuminate\Support\Carbon $paid_at
- * @property ?\Illuminate\Support\Carbon $payment_received_at
- * @property ?\Illuminate\Support\Carbon $setup_started_at
- * @property ?\Illuminate\Support\Carbon $awaiting_customer_at
- * @property ?\Illuminate\Support\Carbon $completed_at
- * @property ?\Illuminate\Support\Carbon $cancelled_at
- * @property ?\Illuminate\Support\Carbon $refunded_at
- * @property ?\Illuminate\Support\Carbon $fulfilled_at
+ * @property ?Carbon $paid_at
+ * @property ?Carbon $payment_received_at
+ * @property ?Carbon $setup_started_at
+ * @property ?Carbon $awaiting_customer_at
+ * @property ?Carbon $completed_at
+ * @property ?Carbon $cancelled_at
+ * @property ?Carbon $refunded_at
+ * @property ?Carbon $fulfilled_at
  * @property ?int $fulfilled_by_user_id
  * @property ?string $provisioned_username_enc
  * @property ?string $provisioned_password_enc
- * @property ?\Illuminate\Support\Carbon $provisioned_expires_on
+ * @property ?Carbon $provisioned_expires_on
  * @property ?string $setup_instructions_md
  * @property ?array $download_links
  * @property ?string $fulfilment_notes
@@ -47,13 +51,13 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  */
 class Purchase extends Model
 {
-    /** @use HasFactory<\Database\Factories\PurchaseFactory> */
+    /** @use HasFactory<PurchaseFactory> */
     use HasFactory, HasUlids;
 
     protected $fillable = [
         'package_id', 'buyer_name', 'buyer_email', 'preferred_username',
         'buyer_phone', 'buyer_telegram', 'delivery_method',
-        'amount_minor', 'currency', 'status', 'fulfilment_status',
+        'amount_minor', 'account_credit_applied_minor', 'external_amount_minor', 'currency', 'status', 'fulfilment_status',
         'stripe_session_id', 'stripe_payment_intent_id', 'stripe_charge_id',
         'attribution_id', 'referral_code_snapshot', 'ambassador_profile_id_snapshot',
         'terms_accepted_at', 'privacy_accepted_at', 'paid_at', 'fulfilled_at',
@@ -73,6 +77,9 @@ class Purchase extends Model
     protected function casts(): array
     {
         return [
+            'amount_minor' => 'integer',
+            'account_credit_applied_minor' => 'integer',
+            'external_amount_minor' => 'integer',
             'terms_accepted_at' => 'datetime',
             'privacy_accepted_at' => 'datetime',
             'paid_at' => 'datetime',
@@ -90,6 +97,12 @@ class Purchase extends Model
             'provisioned_password_enc' => 'encrypted',
             'download_links' => 'array',
         ];
+    }
+
+    /** @return HasOne<AccountCreditReservation, $this> */
+    public function accountCreditReservation(): HasOne
+    {
+        return $this->hasOne(AccountCreditReservation::class);
     }
 
     /** @return BelongsTo<Package, $this> */

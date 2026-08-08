@@ -16,7 +16,7 @@ use Illuminate\Support\Carbon;
  * @property string $direction credit|debit
  * @property string $source
  * @property ?int $reward_id
- * @property ?int $purchase_id
+ * @property ?string $purchase_id ULID
  * @property ?int $actor_user_id
  * @property string $origin
  * @property string $idempotency_key
@@ -34,7 +34,11 @@ class AccountCreditTransaction extends Model
 
     public const SOURCE_REWARD_FULFILMENT = 'reward_fulfilment';
 
+    public const SOURCE_REWARD_BONUS = 'reward_bonus';
+
     public const SOURCE_PURCHASE_REDEMPTION = 'purchase_redemption';
+
+    public const SOURCE_CREDIT_RESTORATION = 'credit_restoration';
 
     public const SOURCE_ADMIN_ADJUSTMENT = 'admin_adjustment';
 
@@ -103,8 +107,10 @@ class AccountCreditTransaction extends Model
     public function sourceLabel(): string
     {
         return match ($this->source) {
-            self::SOURCE_REWARD_FULFILMENT => 'Reward credit',
-            self::SOURCE_PURCHASE_REDEMPTION => 'Purchase redemption',
+            self::SOURCE_REWARD_FULFILMENT => 'Reward Credit',
+            self::SOURCE_REWARD_BONUS => 'Milestone Bonus',
+            self::SOURCE_PURCHASE_REDEMPTION => 'Package Purchase',
+            self::SOURCE_CREDIT_RESTORATION => 'Credit Restoration',
             self::SOURCE_ADMIN_ADJUSTMENT => 'Admin adjustment',
             self::SOURCE_REVERSAL => 'Reversal',
             default => ucfirst(str_replace('_', ' ', $this->source)),

@@ -192,6 +192,20 @@
 
         {{-- Rewards summary --}}
         <div class="grid" style="margin-top:1rem" data-testid="rewards-summary">
+            <div class="card" data-testid="account-credit-summary" style="background:#0f172a;color:#fff">
+                <h2 style="color:#94a3b8">Account Credit</h2>
+                <div class="value" style="color:#fff" data-testid="stat-account-credit">£{{ number_format($stats['account_credit_balance_minor'] / 100, 2) }}</div>
+                <div class="value-sub" style="color:#cbd5e1">
+                    Available: £{{ number_format($stats['account_credit_available_minor'] / 100, 2) }}
+                    @if (($stats['account_credit_reserved_minor'] ?? 0) > 0)
+                        · Reserved: £{{ number_format($stats['account_credit_reserved_minor'] / 100, 2) }}
+                    @endif
+                </div>
+                <div style="margin-top:.75rem">
+                    <a href="{{ route('ambassador.account-credit') }}" data-testid="view-credit-history"
+                       style="color:#93c5fd;font-size:.9rem;font-weight:600">View Credit History</a>
+                </div>
+            </div>
             <div class="card">
                 <h2>Available now</h2>
                 <div class="value" data-testid="reward-available">£{{ number_format($stats['available_reward_minor'] / 100, 2) }}</div>

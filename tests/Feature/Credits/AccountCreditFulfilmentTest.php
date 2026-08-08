@@ -68,6 +68,7 @@ class AccountCreditFulfilmentTest extends TestCase
                 'paid_at' => now()->subDays(20),
                 'ambassador_profile_id_snapshot' => $this->profile->id,
                 'referral_code_snapshot' => $this->profile->referral_code,
+                'buyer_email' => 'buyer-'.$i.'-'.uniqid().'@example.test',
             ]);
             $conv = ReferralConversion::create([
                 'purchase_id' => $purchase->id,
@@ -82,20 +83,21 @@ class AccountCreditFulfilmentTest extends TestCase
         }
     }
 
-    private function approvedMilestoneReward(): Reward
+    private function approvedMilestoneReward(int $threshold = 5): Reward
     {
-        $this->approveConversions(5);
-        $tier = RewardMilestoneTier::query()->where('threshold', 5)->firstOrFail();
+        $this->approveConversions($threshold);
+        $tier = RewardMilestoneTier::query()->where('threshold', $threshold)->firstOrFail();
         $reward = app(MilestoneProgressionService::class)->claim($this->profile, $tier, $this->member);
         $this->assertTrue(app(RewardsEngine::class)->approve($reward, $this->admin));
 
         return $reward->fresh();
     }
 
-    public function test_fifty_pound_reward_creates_exactly_fifty_pounds_credit(): void
+    public function test_fifty_pound_reward_creates_base_plus_tier_bonus_credit(): void
     {
-        $reward = $this->approvedMilestoneReward();
+        $reward = $this->approvedMilestoneReward(5);
         $this->assertSame(5000, $reward->amount_minor);
+        $this->assertSame(1000, $reward->account_credit_bonus_minor_snapshot);
 
         $ok = app(AccountCreditFulfilmentService::class)->apply($reward, $this->admin);
         $this->assertTrue($ok);
@@ -107,13 +109,14 @@ class AccountCreditFulfilmentTest extends TestCase
         $this->assertSame($this->admin->id, $reward->paid_by_user_id);
         $this->assertNotNull($reward->account_credit_transaction_id);
 
-        $this->assertSame(1, AccountCreditTransaction::count());
-        $tx = AccountCreditTransaction::sole();
-        $this->assertSame(5000, $tx->amount_minor);
-        $this->assertSame('credit', $tx->direction);
-        $this->assertSame(AccountCreditTransaction::SOURCE_REWARD_FULFILMENT, $tx->source);
-        $this->assertSame($reward->id, $tx->reward_id);
-        $this->assertSame(5000, app(AccountCreditLedger::class)->balanceMinor($this->profile));
+        $this->assertSame(2, AccountCreditTransaction::count());
+        $base = AccountCreditTransaction::query()
+            ->where('source', AccountCreditTransaction::SOURCE_REWARD_FULFILMENT)->sole();
+        $bonus = AccountCreditTransaction::query()
+            ->where('source', AccountCreditTransaction::SOURCE_REWARD_BONUS)->sole();
+        $this->assertSame(5000, $base->amount_minor);
+        $this->assertSame(1000, $bonus->amount_minor);
+        $this->assertSame(6000, app(AccountCreditLedger::class)->balanceMinor($this->profile));
     }
 
     public function test_reward_cannot_credit_twice(): void
@@ -124,16 +127,17 @@ class AccountCreditFulfilmentTest extends TestCase
         $this->assertTrue($svc->apply($reward, $this->admin));
         $this->assertTrue($svc->apply($reward->fresh(), $this->admin)); // idempotent
 
-        $this->assertSame(1, AccountCreditTransaction::count());
-        $this->assertSame(5000, app(AccountCreditLedger::class)->balanceMinor($this->profile));
+        $this->assertSame(1, AccountCreditTransaction::query()
+            ->where('source', AccountCreditTransaction::SOURCE_REWARD_FULFILMENT)->count());
+        $this->assertSame(1, AccountCreditTransaction::query()
+            ->where('source', AccountCreditTransaction::SOURCE_REWARD_BONUS)->count());
+        $this->assertSame(6000, app(AccountCreditLedger::class)->balanceMinor($this->profile));
     }
 
     public function test_failed_credit_does_not_mark_reward_paid(): void
     {
         $reward = $this->approvedMilestoneReward();
 
-        // Force ledger failure by pre-inserting conflicting unique reward+source with wrong amount,
-        // then deleting balance path — simpler: mark funding compromised first.
         $reward->update([
             'funding_compromised_at' => now(),
             'funding_compromise_reason' => 'refund',
@@ -155,7 +159,6 @@ class AccountCreditFulfilmentTest extends TestCase
     {
         $reward = $this->approvedMilestoneReward();
 
-        // Reverse a funding conversion → unpaid reward invalidated / allocations released.
         $allocation = ReferralAllocation::query()->where('reward_id', $reward->id)->whereNotNull('active_marker')->firstOrFail();
         $conversion = $allocation->conversion;
         $conversion->purchase->update(['status' => 'refunded']);
@@ -164,13 +167,13 @@ class AccountCreditFulfilmentTest extends TestCase
         $reward->refresh();
         $this->assertSame('rejected', $reward->status);
 
-        // Rebuild an approved underfunded reward artificially for credit attempt.
         $bad = Reward::factory()->create([
             'ambassador_profile_id' => $this->profile->id,
             'origin' => 'milestone_claim',
             'status' => 'approved',
             'approved_at' => now(),
             'amount_minor' => 5000,
+            'account_credit_bonus_minor_snapshot' => 1000,
             'currency' => 'gbp',
             'milestone_index' => 5,
             'tier_snapshot' => ['threshold' => 5],
@@ -198,7 +201,7 @@ class AccountCreditFulfilmentTest extends TestCase
         $this->assertSame('paid', $reward->fresh()->status);
         $this->assertSame(PayoutMethod::BankTransfer->value, $reward->fresh()->payment_method);
         $this->assertSame(0, AccountCreditTransaction::count());
-        $this->assertSame(0, app(AccountCreditLedger::class)->balanceMinor($this->profile));
+        $this->assertSame(5000, $reward->fresh()->amount_minor);
     }
 
     public function test_member_can_view_balance_and_history(): void
@@ -209,9 +212,10 @@ class AccountCreditFulfilmentTest extends TestCase
         $this->actingAs($this->member)
             ->get(route('ambassador.account-credit'))
             ->assertOk()
-            ->assertSee('£50.00')
-            ->assertSee('Reward credit')
-            ->assertSee('not available yet');
+            ->assertSee('£60.00')
+            ->assertSee('Reward Credit')
+            ->assertSee('Milestone Bonus')
+            ->assertSee('Browse packages');
     }
 
     public function test_concurrent_idempotent_retry_does_not_double_credit(): void
@@ -219,7 +223,6 @@ class AccountCreditFulfilmentTest extends TestCase
         $reward = $this->approvedMilestoneReward();
         $svc = app(AccountCreditFulfilmentService::class);
 
-        // Simulate overlapping retries in sequence under transactions.
         DB::transaction(fn () => $svc->apply($reward, $this->admin));
         DB::transaction(fn () => $svc->apply($reward->fresh(), $this->admin));
 
@@ -227,14 +230,18 @@ class AccountCreditFulfilmentTest extends TestCase
             ->where('reward_id', $reward->id)
             ->where('source', AccountCreditTransaction::SOURCE_REWARD_FULFILMENT)
             ->count());
-        $this->assertSame(5000, app(AccountCreditLedger::class)->balanceMinor($this->profile));
+        $this->assertSame(1, AccountCreditTransaction::query()
+            ->where('reward_id', $reward->id)
+            ->where('source', AccountCreditTransaction::SOURCE_REWARD_BONUS)
+            ->count());
+        $this->assertSame(6000, app(AccountCreditLedger::class)->balanceMinor($this->profile));
     }
 
-    public function test_orphaned_credit_is_repaired_and_bank_mark_paid_blocked(): void
+    public function test_orphaned_credit_is_repaired_including_missing_bonus_and_bank_mark_paid_blocked(): void
     {
         $reward = $this->approvedMilestoneReward();
 
-        // Simulate incomplete fulfilment: ledger credit exists, reward still approved.
+        // Incomplete fulfilment: base ledger credit exists, bonus missing, reward still approved.
         $tx = app(AccountCreditLedger::class)->creditRewardFulfilment(
             profile: $this->profile,
             amountMinor: $reward->amount_minor,
@@ -255,9 +262,9 @@ class AccountCreditFulfilmentTest extends TestCase
         $this->assertSame(PayoutMethod::AccountCredit->value, $reward->payment_method);
         $this->assertSame($tx->id, $reward->account_credit_transaction_id);
         $this->assertNotNull($reward->paid_at);
-        $this->assertSame(1, AccountCreditTransaction::count());
+        $this->assertSame(2, AccountCreditTransaction::count());
+        $this->assertSame(6000, app(AccountCreditLedger::class)->balanceMinor($this->profile));
 
-        // Bank Transfer Mark Paid must no longer succeed.
         $this->assertFalse(app(RewardsEngine::class)->markPaid(
             $reward->fresh(),
             $this->admin,

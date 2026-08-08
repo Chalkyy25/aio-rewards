@@ -2,6 +2,8 @@
 
 namespace App\Domain\Fulfilment;
 
+use App\Domain\Credits\AccountCreditCheckoutService;
+use App\Domain\Notifications\BuyerOrderNotifier;
 use App\Models\Purchase;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
@@ -86,9 +88,20 @@ class OrderFulfilmentService
             actor: $actor,
         );
 
+        // Restore Account Credit spent on this purchase (idempotent).
+        if ($to === OrderStatus::Refunded) {
+            try {
+                App::make(AccountCreditCheckoutService::class)
+                    ->restoreAfterRefund($purchase, $actor);
+            } catch (\Throwable $e) {
+                // Do not block the fulfilment transition; ledger restore can be retried.
+                report($e);
+            }
+        }
+
         // Notify the buyer once fulfilment reaches Completed (idempotent).
         if ($to === OrderStatus::Completed) {
-            App::make(\App\Domain\Notifications\BuyerOrderNotifier::class)
+            App::make(BuyerOrderNotifier::class)
                 ->sendOrderCompleted($purchase);
         }
     }

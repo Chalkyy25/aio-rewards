@@ -8,12 +8,13 @@ use Filament\Actions\BulkActionGroup;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
-use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Resources\Pages\PageRegistration;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
@@ -48,21 +49,37 @@ class RewardMilestoneTierResource extends Resource
                             ->ignore($record?->getKey());
                     }),
                 TextInput::make('total_reward_amount_minor')
-                    ->label('Total reward (minor units, pence)')
+                    ->label('Cash reward (minor units, pence)')
                     ->numeric()->minValue(0)->required()
-                    ->helperText('£110.00 → 11000.'),
+                    ->helperText('Bank Transfer value. £50.00 → 5000. This remains the reward cash amount.'),
                 TextInput::make('bonus_amount_minor')
                     ->label('Save & Grow bonus (minor units)')
                     ->numeric()->minValue(0)->default(0)
-                    ->helperText('Display-only figure highlighted to the member.')
+                    ->helperText('Display-only figure highlighted to the member (baked into cash narrative).')
                     ->rules([
-                        fn (\Filament\Schemas\Components\Utilities\Get $get) => function (string $attribute, $value, \Closure $fail) use ($get) {
+                        fn (Get $get) => function (string $attribute, $value, \Closure $fail) use ($get) {
                             $total = (int) ($get('total_reward_amount_minor') ?? 0);
                             if ((int) $value > $total) {
-                                $fail('Bonus cannot exceed the total reward amount.');
+                                $fail('Save & Grow bonus cannot exceed the cash reward amount.');
                             }
                         },
                     ]),
+                TextInput::make('account_credit_bonus_minor')
+                    ->label('Account Credit bonus (minor units)')
+                    ->numeric()->minValue(0)->default(0)->required()
+                    ->helperText('Promotional bonus added only when the member chooses Account Credit. £10.00 → 1000. May be £0.')
+                    ->rules(['integer', 'min:0']),
+                TextInput::make('account_credit_total_preview')
+                    ->label('Total Account Credit value')
+                    ->disabled()
+                    ->dehydrated(false)
+                    ->helperText('Cash reward + Account Credit bonus (read-only).')
+                    ->formatStateUsing(function ($state, ?RewardMilestoneTier $record, Get $get) {
+                        $cash = (int) ($get('total_reward_amount_minor') ?? $record?->total_reward_amount_minor ?? 0);
+                        $bonus = (int) ($get('account_credit_bonus_minor') ?? $record?->account_credit_bonus_minor ?? 0);
+
+                        return '£'.number_format(($cash + $bonus) / 100, 2).' ('.($cash + $bonus).' minor)';
+                    }),
                 TextInput::make('currency')->required()->default('gbp')->maxLength(3),
                 TextInput::make('display_order')->numeric()->default(0),
             ])->columns(2),
@@ -85,9 +102,13 @@ class RewardMilestoneTierResource extends Resource
                 TextColumn::make('display_order')->label('#')->sortable(),
                 TextColumn::make('title')->searchable(),
                 TextColumn::make('threshold')->sortable(),
-                TextColumn::make('total_reward_amount_minor')->label('Amount')
+                TextColumn::make('total_reward_amount_minor')->label('Cash')
                     ->formatStateUsing(fn (RewardMilestoneTier $t) => $t->amountFormatted()),
-                TextColumn::make('bonus_amount_minor')->label('Bonus')
+                TextColumn::make('account_credit_bonus_minor')->label('AC Bonus')
+                    ->formatStateUsing(fn (RewardMilestoneTier $t) => $t->accountCreditBonusFormatted()),
+                TextColumn::make('account_credit_total')->label('AC Total')
+                    ->state(fn (RewardMilestoneTier $t) => $t->accountCreditTotalFormatted()),
+                TextColumn::make('bonus_amount_minor')->label('S&G')
                     ->formatStateUsing(fn (RewardMilestoneTier $t) => $t->bonusFormatted()),
                 TextColumn::make('currency'),
                 IconColumn::make('is_active')->label('Active')->boolean(),

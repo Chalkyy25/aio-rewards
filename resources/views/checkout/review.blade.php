@@ -27,14 +27,33 @@
         </div>
     @endif
 
-    <div style="display:flex;gap:.5rem;margin-top:1.5rem">
-        <a href="{{ route('checkout.details', ['slug' => $package->slug]) }}" data-testid="review-edit"
-           style="padding:.85rem 1rem;background:#fff;border:1px solid #cbd5e1;color:#0f172a;border-radius:.5rem;text-decoration:none;font-weight:600">Edit details</a>
-        <form method="POST" action="{{ route('checkout.pay', ['slug' => $package->slug]) }}" style="flex:1">@csrf
-            <button type="submit" data-testid="review-pay" style="width:100%;padding:.9rem;background:#0f172a;color:#fff;border:0;border-radius:.5rem;font-weight:600;cursor:pointer">
-                Pay securely with Stripe
+    <form method="POST" action="{{ route('checkout.pay', ['slug' => $package->slug]) }}" style="margin-top:1.5rem">
+        @csrf
+
+        @if ($canUseCredit ?? false)
+            <div data-testid="review-account-credit" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:.75rem;padding:1rem;margin-bottom:1.25rem">
+                <div style="font-weight:600;margin-bottom:.35rem">Account Credit available</div>
+                <div data-testid="review-credit-available" style="font-size:1.25rem;font-weight:700;margin-bottom:.75rem">{{ $creditAvailableFormatted }}</div>
+                <label style="display:flex;align-items:flex-start;gap:.6rem;cursor:pointer">
+                    <input type="checkbox" name="use_account_credit" value="1" data-testid="review-use-credit"
+                           style="margin-top:.2rem">
+                    <span>
+                        Use Account Credit
+                        <span style="display:block;color:#64748b;font-size:.85rem;margin-top:.2rem">
+                            Optional. Credit applied is calculated on the server and never exceeds the package price.
+                        </span>
+                    </span>
+                </label>
+            </div>
+        @endif
+
+        <div style="display:flex;gap:.5rem">
+            <a href="{{ route('checkout.details', ['slug' => $package->slug]) }}" data-testid="review-edit"
+               style="padding:.85rem 1rem;background:#fff;border:1px solid #cbd5e1;color:#0f172a;border-radius:.5rem;text-decoration:none;font-weight:600">Edit details</a>
+            <button type="submit" data-testid="review-pay" style="flex:1;padding:.9rem;background:#0f172a;color:#fff;border:0;border-radius:.5rem;font-weight:600;cursor:pointer">
+                Continue to payment
             </button>
-        </form>
-    </div>
+        </div>
+    </form>
 </div>
 @endsection

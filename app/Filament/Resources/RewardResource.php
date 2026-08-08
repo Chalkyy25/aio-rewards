@@ -64,7 +64,7 @@ class RewardResource extends Resource
                 TextEntry::make('cycle_number')->label('Cycle')->placeholder('—'),
                 TextEntry::make('rule.name')->label('Legacy rule')->placeholder('—'),
                 TextEntry::make('triggerConversion.id')->label('Trigger conversion')->placeholder('—'),
-                TextEntry::make('amount_minor')->label('Amount')
+                TextEntry::make('amount_minor')->label('Cash Reward')
                     ->formatStateUsing(fn (Reward $r) => $r->amountFormatted()),
                 TextEntry::make('status')->badge()
                     ->color(fn (Reward $r) => $r->statusColor())
@@ -75,6 +75,38 @@ class RewardResource extends Resource
                         'consume' => 'Consumed cycle',
                         default => $r->reject_disposition ?? '—',
                     })->placeholder('—'),
+            ])->columns(2),
+
+            Section::make('Claim payout')->schema([
+                TextEntry::make('preferred_payout_method_snapshot')
+                    ->label('Payout Method')
+                    ->state(fn (Reward $r) => $r->adminClaimedPayoutMethodLabel())
+                    ->badge()
+                    ->color(fn (Reward $r) => $r->adminClaimedPayoutMethodColor()),
+                TextEntry::make('cash_reward_display')
+                    ->label('Cash Reward')
+                    ->state(fn (Reward $r) => $r->amountFormatted()),
+                TextEntry::make('account_credit_bonus_minor_snapshot')
+                    ->label('Account Credit Bonus')
+                    ->state(fn (Reward $r) => $r->accountCreditBonusFormatted())
+                    ->visible(fn (Reward $r) => $r->claimedAsAccountCredit() && $r->accountCreditBonusMinor() > 0),
+                TextEntry::make('account_credit_bonus_na')
+                    ->label('Account Credit Bonus')
+                    ->state('Not applicable')
+                    ->visible(fn (Reward $r) => $r->claimedAsBankTransfer()),
+                TextEntry::make('payable_total_display')
+                    ->label(fn (Reward $r) => $r->adminPayableTotalLabel())
+                    ->state(fn (Reward $r) => $r->adminPayableAmountFormatted())
+                    ->weight('bold'),
+                TextEntry::make('status_in_payout')
+                    ->label('Status')
+                    ->state(fn (Reward $r) => $r->statusLabel())
+                    ->badge()
+                    ->color(fn (Reward $r) => $r->statusColor()),
+                TextEntry::make('legacy_payout_note')
+                    ->label('Note')
+                    ->state('This reward has no claim-time payout snapshot. Cash value only — do not infer Account Credit from the member\'s current settings.')
+                    ->visible(fn (Reward $r) => $r->claimedPayoutMethod() === null),
             ])->columns(2),
 
             Section::make('Allocations')->schema([
@@ -112,19 +144,15 @@ class RewardResource extends Resource
                     ->contained(false),
             ])->visible(fn (Reward $r) => $r->allocations()->exists()),
 
-            Section::make('Payout preference')->schema([
-                TextEntry::make('preferred_payout_method_snapshot')
-                    ->label('Claimed payout method')
-                    ->formatStateUsing(fn ($state) => $state instanceof PayoutMethod
-                        ? $state->label()
-                        : (PayoutMethod::tryFrom((string) $state)?->label() ?? 'Not snapshotted (legacy)'))
-                    ->badge()
-                    ->color(fn (Reward $r) => $r->claimedPayoutMethod() ? 'success' : 'warning'),
+            Section::make('Member destination (current)')->schema([
                 TextEntry::make('current_payout_method')
                     ->label('Current member preference')
                     ->state(fn (Reward $r) => $r->ambassadorProfile?->payoutProfile?->preferred_method?->label() ?? 'Not configured')
                     ->badge()
                     ->color(fn (Reward $r) => $r->ambassadorProfile?->hasConfiguredPayoutMethod() ? 'gray' : 'danger'),
+                TextEntry::make('current_preference_note')
+                    ->label('Note')
+                    ->state('Informational only. Fulfilment follows the claim snapshot above.'),
                 TextEntry::make('payout_configured')
                     ->label('Destination configured')
                     ->state(fn (Reward $r) => $r->ambassadorProfile?->hasConfiguredPayoutMethod() ? 'Yes' : 'No')
@@ -190,8 +218,18 @@ class RewardResource extends Resource
                 TextColumn::make('cycle_number')->label('Cycle')->sortable()->toggleable(),
                 TextColumn::make('rule.name')->label('Legacy rule')->placeholder('—')->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('milestone_index')->label('Threshold')->sortable()->toggleable(),
-                TextColumn::make('amount_minor')->label('Amount')
-                    ->formatStateUsing(fn (Reward $r) => $r->amountFormatted())->sortable(),
+                TextColumn::make('preferred_payout_method_snapshot')
+                    ->label('Payout Method')
+                    ->badge()
+                    ->state(fn (Reward $r) => $r->adminClaimedPayoutMethodLabel())
+                    ->color(fn (Reward $r) => $r->adminClaimedPayoutMethodColor())
+                    ->sortable(),
+                TextColumn::make('amount_minor')->label('Reward Value')
+                    ->formatStateUsing(fn (Reward $r) => $r->adminPayableAmountFormatted())
+                    ->description(fn (Reward $r) => $r->claimedAsAccountCredit() && $r->accountCreditBonusMinor() > 0
+                        ? $r->amountFormatted().' + '.$r->accountCreditBonusFormatted().' bonus'
+                        : null)
+                    ->sortable(),
                 TextColumn::make('status')->badge()
                     ->color(fn (Reward $r) => $r->statusColor())
                     ->formatStateUsing(fn (Reward $r) => $r->statusLabel()),
@@ -216,6 +254,24 @@ class RewardResource extends Resource
                     'rejected' => 'Rejected',
                     'reversed' => 'Reversed',
                 ]),
+                SelectFilter::make('preferred_payout_method_snapshot')
+                    ->label('Payout method')
+                    ->options([
+                        PayoutMethod::AccountCredit->value => 'Account Credit',
+                        PayoutMethod::BankTransfer->value => 'Bank Transfer',
+                        'legacy' => 'Legacy / Not snapshotted',
+                    ])
+                    ->query(function ($query, array $data) {
+                        $value = $data['value'] ?? null;
+                        if ($value === null || $value === '') {
+                            return $query;
+                        }
+                        if ($value === 'legacy') {
+                            return $query->whereNull('preferred_payout_method_snapshot');
+                        }
+
+                        return $query->where('preferred_payout_method_snapshot', $value);
+                    }),
                 SelectFilter::make('milestone_tier_id')
                     ->label('Milestone tier')
                     ->options(fn () => RewardMilestoneTier::query()

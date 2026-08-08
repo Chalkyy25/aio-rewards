@@ -9,9 +9,12 @@ use App\Domain\Provider\Drivers\FakeVerificationDriver;
 use App\Domain\Provider\Drivers\XtreamVerificationDriver;
 use App\Domain\Referrals\Events\ReferralConversionApproved;
 use App\Domain\Settings\SettingsRepository;
+use App\Listeners\EvaluateMilestoneUnlockForApprovedConversion;
 use App\Listeners\EvaluateRewardsForApprovedConversion;
+use App\Listeners\MarkMilestoneUnlockNotificationSent;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Http\Client\Factory as HttpFactory;
+use Illuminate\Notifications\Events\NotificationSent;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use InvalidArgumentException;
@@ -100,6 +103,14 @@ class DomainServiceProvider extends ServiceProvider
         Event::listen(
             ReferralConversionApproved::class,
             EvaluateRewardsForApprovedConversion::class,
+        );
+        Event::listen(
+            ReferralConversionApproved::class,
+            EvaluateMilestoneUnlockForApprovedConversion::class,
+        );
+        Event::listen(
+            NotificationSent::class,
+            MarkMilestoneUnlockNotificationSent::class,
         );
     }
 }

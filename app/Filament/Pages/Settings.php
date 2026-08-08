@@ -53,6 +53,7 @@ class Settings extends Page implements HasForms
             'branding' => 'Branding',
             'public' => 'Public page content',
             'orders' => 'Customer order messages',
+            'notifications' => 'Notifications',
             'ops' => 'Operations Centre',
         ];
 

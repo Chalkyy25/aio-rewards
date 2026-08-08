@@ -26,7 +26,7 @@ class RewardsEngine
      * Evaluate all active rules for the ambassador whose conversion just
      * got approved. Called by the ReferralConversionApproved listener.
      *
-     * @return array<int, Reward>  freshly-created rewards
+     * @return array<int, Reward> freshly-created rewards
      */
     public function onConversionApproved(ReferralConversion $conversion): array
     {
@@ -137,18 +137,46 @@ class RewardsEngine
         return true;
     }
 
-    public function markPaid(Reward $reward, ?User $actor = null, ?string $note = null): bool
-    {
+    /**
+     * Record that an admin has manually paid an approved reward.
+     *
+     * This never initiates a bank transfer — it only stores payment metadata
+     * after the operator confirms they sent the money outside AIO Rewards.
+     */
+    public function markPaid(
+        Reward $reward,
+        ?User $actor = null,
+        ?string $note = null,
+        ?string $paymentMethod = null,
+        ?string $paymentReference = null,
+    ): bool {
         if ($reward->status !== 'approved') {
             return false;
         }
+
+        $method = $paymentMethod
+            ?: $reward->ambassadorProfile?->payoutProfile?->preferred_method?->value
+            ?: 'bank_transfer';
+
         $reward->update([
             'status' => 'paid',
             'paid_at' => now(),
             'paid_by_user_id' => $actor?->getKey(),
-            'note' => $note ?: $reward->note,
+            'payment_method' => $method,
+            'payment_reference' => $paymentReference !== null && $paymentReference !== ''
+                ? $paymentReference
+                : $reward->payment_reference,
+            'note' => $note !== null && $note !== '' ? $note : $reward->note,
         ]);
-        AuditLogger::record('reward.paid', $reward, actor: $actor);
+        AuditLogger::record(
+            'reward.paid',
+            $reward,
+            actor: $actor,
+            after: [
+                'payment_method' => $method,
+                'has_payment_reference' => filled($paymentReference),
+            ],
+        );
         RewardPaid::dispatch($reward->fresh());
 
         return true;

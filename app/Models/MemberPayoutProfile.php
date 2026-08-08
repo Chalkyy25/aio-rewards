@@ -120,8 +120,7 @@ class MemberPayoutProfile extends Model
 
     public function maskedPayPalEmail(): ?string
     {
-        // Owning member and authorised admins may see the full email.
-        // This helper remains available for list/table contexts.
+        // Legacy helper for historical PayPal rows in masked admin contexts.
         $email = $this->paypal_email;
         if (! is_string($email) || $email === '' || ! str_contains($email, '@')) {
             return $email;
@@ -131,6 +130,19 @@ class MemberPayoutProfile extends Model
         $keep = min(2, strlen($local));
 
         return substr($local, 0, $keep).str_repeat('*', max(0, strlen($local) - $keep)).'@'.$domain;
+    }
+
+    /**
+     * Masked destination summary for normal admin / table views.
+     * Never returns full sort code, account number, or PayPal email.
+     */
+    public function maskedDetailsSummary(): string
+    {
+        return match ($this->preferred_method) {
+            PayoutMethod::BankTransfer => (string) ($this->maskedAccountNumber() ?? '****'),
+            PayoutMethod::PayPal => (string) ($this->maskedPayPalEmail() ?? '—'),
+            PayoutMethod::AccountCredit => 'Account Credit',
+        };
     }
 
     /**

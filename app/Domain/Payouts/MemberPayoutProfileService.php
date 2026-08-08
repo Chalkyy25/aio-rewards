@@ -8,11 +8,15 @@ use App\Models\MemberPayoutProfile;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 use SensitiveParameter;
 
 /**
  * Owns create/update/reset of Rewards Member payout preferences.
+ *
+ * Configurable methods: Bank Transfer and Account Credit.
+ * PayPal remains readable for historical rows but cannot be newly saved.
  *
  * Deliberate field-clearing policy: when the preferred method changes,
  * irrelevant encrypted destination fields are nullified so previously
@@ -39,6 +43,12 @@ final class MemberPayoutProfileService
             ? $input['preferred_method']
             : PayoutMethod::from((string) $input['preferred_method']);
 
+        if (! $method->isConfigurable()) {
+            throw ValidationException::withMessages([
+                'preferredMethod' => 'PayPal is no longer available. Please choose Bank Transfer or Account Credit.',
+            ]);
+        }
+
         $existing = MemberPayoutProfile::query()
             ->where('ambassador_profile_id', $profile->id)
             ->first();
@@ -46,7 +56,7 @@ final class MemberPayoutProfileService
         $requiresPassword = $this->requiresPasswordConfirmation($method, $existing);
         if ($requiresPassword) {
             if ($password === null || $password === ''
-                || ! \Illuminate\Support\Facades\Hash::check($password, (string) $actor->password)) {
+                || ! Hash::check($password, (string) $actor->password)) {
                 throw ValidationException::withMessages([
                     'confirmPassword' => 'Password did not match.',
                 ]);
@@ -130,7 +140,7 @@ final class MemberPayoutProfileService
     }
 
     /**
-     * @param  array<string, mixed>  $input
+     * @param array<string, mixed> $input
      * @return array{
      *     preferred_method: PayoutMethod,
      *     account_holder_name: ?string,
@@ -149,13 +159,6 @@ final class MemberPayoutProfileService
                 'account_number' => preg_replace('/\D+/', '', (string) ($input['account_number'] ?? '')) ?: null,
                 'paypal_email' => null,
             ],
-            PayoutMethod::PayPal => [
-                'preferred_method' => $method,
-                'account_holder_name' => null,
-                'sort_code' => null,
-                'account_number' => null,
-                'paypal_email' => strtolower(trim((string) ($input['paypal_email'] ?? ''))),
-            ],
             PayoutMethod::AccountCredit => [
                 'preferred_method' => $method,
                 'account_holder_name' => null,
@@ -163,6 +166,9 @@ final class MemberPayoutProfileService
                 'account_number' => null,
                 'paypal_email' => null,
             ],
+            PayoutMethod::PayPal => throw ValidationException::withMessages([
+                'preferredMethod' => 'PayPal is no longer available. Please choose Bank Transfer or Account Credit.',
+            ]),
         };
     }
 

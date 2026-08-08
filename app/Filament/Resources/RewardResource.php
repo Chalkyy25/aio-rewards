@@ -5,11 +5,13 @@ namespace App\Filament\Resources;
 use App\Domain\Rewards\MilestoneProgressionService;
 use App\Domain\Rewards\RewardsEngine;
 use App\Enums\PayoutMethod;
+use App\Filament\Actions\MarkRewardPaidActionFactory;
 use App\Filament\Resources\RewardResource\Pages;
 use App\Models\ReferralAllocation;
 use App\Models\Reward;
 use App\Models\RewardMilestoneTier;
 use Filament\Actions\Action;
+use Filament\Actions\ActionGroup;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\Textarea;
 use Filament\Infolists\Components\RepeatableEntry;
@@ -110,7 +112,7 @@ class RewardResource extends Resource
 
             Section::make('Payout preference')->schema([
                 TextEntry::make('preferred_payout_method')
-                    ->label('Preferred payout method')
+                    ->label('Payout method')
                     ->state(fn (Reward $r) => $r->ambassadorProfile?->payoutProfile?->preferred_method?->label() ?? 'Not configured')
                     ->badge()
                     ->color(fn (Reward $r) => $r->ambassadorProfile?->hasConfiguredPayoutMethod() ? 'success' : 'danger'),
@@ -125,20 +127,7 @@ class RewardResource extends Resource
                     ->visible(fn (Reward $r) => ! ($r->ambassadorProfile?->hasConfiguredPayoutMethod() ?? false)),
                 TextEntry::make('payout_masked_summary')
                     ->label('Masked details')
-                    ->state(function (Reward $r) {
-                        $payout = $r->ambassadorProfile?->payoutProfile;
-                        if (! $payout) {
-                            return '—';
-                        }
-
-                        return match ($payout->preferred_method) {
-                            PayoutMethod::BankTransfer => trim(($payout->account_holder_name ?? '').' · '
-                                .($payout->maskedSortCode() ?? '').' · '
-                                .($payout->maskedAccountNumber() ?? '')),
-                            PayoutMethod::PayPal => (string) ($payout->paypal_email ?? '—'),
-                            PayoutMethod::AccountCredit => 'Account Credit',
-                        };
-                    })
+                    ->state(fn (Reward $r) => $r->ambassadorProfile?->payoutProfile?->maskedDetailsSummary() ?? '—')
                     ->visible(fn (Reward $r) => $r->ambassadorProfile?->hasConfiguredPayoutMethod() ?? false),
             ])->columns(2),
 
@@ -157,9 +146,14 @@ class RewardResource extends Resource
                 TextEntry::make('reversedBy.email')->label('Reversed by')->placeholder('—'),
             ])->columns(2),
 
-            Section::make('Note')->schema([
-                TextEntry::make('note')->placeholder('—'),
-            ]),
+            Section::make('Payment record')->schema([
+                TextEntry::make('payment_method')
+                    ->label('Payment method')
+                    ->formatStateUsing(fn (?string $state) => PayoutMethod::tryFrom((string) $state)?->label() ?? ($state ?: '—'))
+                    ->placeholder('—'),
+                TextEntry::make('payment_reference')->label('Payment reference')->placeholder('—'),
+                TextEntry::make('note')->label('Admin note')->placeholder('—'),
+            ])->columns(2),
         ]);
     }
 
@@ -215,91 +209,65 @@ class RewardResource extends Resource
                             ->whereRaw("JSON_EXTRACT(tier_snapshot, '$.bonus_amount_minor') > 0"),
                         false: fn ($q) => $q->where(function ($q) {
                             $q->whereNull('tier_snapshot')
-                              ->orWhereRaw("JSON_EXTRACT(tier_snapshot, '$.bonus_amount_minor') = 0");
+                                ->orWhereRaw("JSON_EXTRACT(tier_snapshot, '$.bonus_amount_minor') = 0");
                         }),
                     ),
             ])
             ->recordActions([
                 ViewAction::make(),
-                Action::make('approve')
-                    ->label('Approve')
-                    ->icon('heroicon-o-check-badge')->color('success')
-                    ->visible(fn (Reward $r) => $r->status === 'pending_approval')
-                    ->requiresConfirmation()
-                    ->action(function (Reward $r, RewardsEngine $engine) {
-                        if ($engine->approve($r, Auth::user())) {
-                            Notification::make()->title('Reward approved')->success()->send();
-                        }
-                    }),
-                Action::make('reject')
-                    ->label('Reject (release)')
-                    ->icon('heroicon-o-arrow-uturn-left')->color('gray')
-                    ->visible(fn (Reward $r) => in_array($r->status, ['pending_approval', 'approved'], true))
-                    ->schema([Textarea::make('note')->required()->maxLength(500)
-                        ->helperText('Correctable rejection — allocations are released so legitimate referrals become eligible again.')])
-                    ->action(function (Reward $r, array $data, MilestoneProgressionService $ms, RewardsEngine $engine) {
-                        if ($r->origin === 'milestone_claim') {
-                            $ms->rejectAndRelease($r, Auth::user(), (string) $data['note']);
-                        } else {
-                            $engine->reject($r, Auth::user(), (string) $data['note']);
-                        }
-                        Notification::make()->title('Reward rejected & allocations released')->success()->send();
-                    }),
-                Action::make('rejectAndConsume')
-                    ->label('Reject (consume cycle)')
-                    ->icon('heroicon-o-no-symbol')->color('danger')
-                    ->visible(fn (Reward $r) => $r->origin === 'milestone_claim' && in_array($r->status, ['pending_approval', 'approved'], true))
-                    ->requiresConfirmation()
-                    ->modalHeading('Reject and consume the cycle')
-                    ->modalDescription('The reward is rejected and the referrals stay consumed. Use only for confirmed disqualification or abuse.')
-                    ->schema([Textarea::make('note')->required()->maxLength(500)])
-                    ->action(function (Reward $r, array $data, MilestoneProgressionService $ms) {
-                        $ms->rejectAndConsume($r, Auth::user(), (string) $data['note']);
-                        Notification::make()->title('Reward rejected & cycle consumed')->success()->send();
-                    }),
-                Action::make('markPaid')
-                    ->label('Mark paid')
-                    ->icon('heroicon-o-banknotes')->color('primary')
-                    ->visible(fn (Reward $r) => $r->status === 'approved')
-                    ->modalHeading('Mark reward paid')
-                    ->modalDescription(function (Reward $r) {
-                        $payout = $r->ambassadorProfile?->payoutProfile;
-                        if (! $payout || ! $payout->isConfigured()) {
-                            return 'Warning: this Rewards Member has no payout method configured. Do not silently assume a destination — use an alternate manual method only if you have confirmed payment separately.';
-                        }
-
-                        return 'Preferred payout method: '.$payout->preferred_method->label()
-                            .'. This records a manual payout only — no money is sent automatically.';
-                    })
-                    ->fillForm(function (Reward $r) {
-                        $method = $r->ambassadorProfile?->payoutProfile?->preferred_method;
-
-                        return [
-                            'note' => $method
-                                ? 'Preferred method: '.$method->label()
-                                : null,
-                        ];
-                    })
-                    ->schema([
-                        Textarea::make('note')
-                            ->label('Payout reference / note')
-                            ->helperText('Record the payment reference. Prefills the member’s preferred method when available.')
-                            ->maxLength(500),
-                    ])
-                    ->requiresConfirmation()
-                    ->action(function (Reward $r, array $data, RewardsEngine $engine) {
-                        $engine->markPaid($r, Auth::user(), $data['note'] ?? null);
-                        Notification::make()->title('Reward marked paid')->success()->send();
-                    }),
-                Action::make('reverse')
-                    ->label('Reverse')
-                    ->icon('heroicon-o-arrow-uturn-left')->color('danger')
-                    ->visible(fn (Reward $r) => $r->status !== 'reversed')
-                    ->schema([Textarea::make('note')->maxLength(500)])
-                    ->action(function (Reward $r, array $data, RewardsEngine $engine) {
-                        $engine->reverse($r, Auth::user(), $data['note'] ?? null);
-                        Notification::make()->title('Reward reversed')->success()->send();
-                    }),
+                ActionGroup::make([
+                    Action::make('approve')
+                        ->label('Approve')
+                        ->icon('heroicon-o-check-badge')->color('success')
+                        ->visible(fn (Reward $r) => $r->status === 'pending_approval')
+                        ->requiresConfirmation()
+                        ->action(function (Reward $r, RewardsEngine $engine) {
+                            if ($engine->approve($r, Auth::user())) {
+                                Notification::make()->title('Reward approved')->success()->send();
+                            }
+                        }),
+                    Action::make('reject')
+                        ->label('Reject (release)')
+                        ->icon('heroicon-o-arrow-uturn-left')->color('gray')
+                        ->visible(fn (Reward $r) => in_array($r->status, ['pending_approval', 'approved'], true))
+                        ->schema([Textarea::make('note')->required()->maxLength(500)
+                            ->helperText('Correctable rejection — allocations are released so legitimate referrals become eligible again.')])
+                        ->action(function (Reward $r, array $data, MilestoneProgressionService $ms, RewardsEngine $engine) {
+                            if ($r->origin === 'milestone_claim') {
+                                $ms->rejectAndRelease($r, Auth::user(), (string) $data['note']);
+                            } else {
+                                $engine->reject($r, Auth::user(), (string) $data['note']);
+                            }
+                            Notification::make()->title('Reward rejected & allocations released')->success()->send();
+                        }),
+                    Action::make('rejectAndConsume')
+                        ->label('Reject (consume cycle)')
+                        ->icon('heroicon-o-no-symbol')->color('danger')
+                        ->visible(fn (Reward $r) => $r->origin === 'milestone_claim' && in_array($r->status, ['pending_approval', 'approved'], true))
+                        ->requiresConfirmation()
+                        ->modalHeading('Reject and consume the cycle')
+                        ->modalDescription('The reward is rejected and the referrals stay consumed. Use only for confirmed disqualification or abuse.')
+                        ->schema([Textarea::make('note')->required()->maxLength(500)])
+                        ->action(function (Reward $r, array $data, MilestoneProgressionService $ms) {
+                            $ms->rejectAndConsume($r, Auth::user(), (string) $data['note']);
+                            Notification::make()->title('Reward rejected & cycle consumed')->success()->send();
+                        }),
+                    MarkRewardPaidActionFactory::make(),
+                    Action::make('reverse')
+                        ->label('Reverse')
+                        ->icon('heroicon-o-arrow-uturn-left')->color('danger')
+                        ->visible(fn (Reward $r) => $r->status !== 'reversed')
+                        ->schema([Textarea::make('note')->maxLength(500)])
+                        ->action(function (Reward $r, array $data, RewardsEngine $engine) {
+                            $engine->reverse($r, Auth::user(), $data['note'] ?? null);
+                            Notification::make()->title('Reward reversed')->success()->send();
+                        }),
+                ])
+                    ->label('Actions')
+                    ->icon('heroicon-m-ellipsis-vertical')
+                    ->button()
+                    ->color('gray')
+                    ->tooltip('Reward actions'),
             ])
             ->toolbarActions([]);
     }

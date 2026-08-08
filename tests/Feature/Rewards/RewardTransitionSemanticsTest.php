@@ -120,4 +120,28 @@ class RewardTransitionSemanticsTest extends TestCase
         $this->assertFalse(app(RewardsEngine::class)->reverse($reward->fresh()));
         $this->assertFalse(app(RewardsEngine::class)->reject($reward->fresh()));
     }
+
+    public function test_rewards_engine_reject_refuses_milestone_and_does_not_strand_allocations(): void
+    {
+        $reward = $this->claim();
+        $this->assertSame('milestone_claim', $reward->origin);
+        $this->assertSame(5, ReferralAllocation::query()
+            ->where('reward_id', $reward->id)->whereNotNull('active_marker')->count());
+
+        $this->assertFalse(app(RewardsEngine::class)->reject($reward, $this->member, 'must not strand'));
+
+        $reward->refresh();
+        $this->assertSame('pending_approval', $reward->status);
+        $this->assertSame(5, ReferralAllocation::query()
+            ->where('reward_id', $reward->id)->whereNotNull('active_marker')->count());
+
+        // Canonical path still works.
+        $this->assertTrue(app(MilestoneProgressionService::class)->rejectAndRelease(
+            $reward->fresh(),
+            $this->member,
+            'proper release',
+        ));
+        $this->assertSame(0, ReferralAllocation::query()
+            ->where('reward_id', $reward->id)->whereNotNull('active_marker')->count());
+    }
 }

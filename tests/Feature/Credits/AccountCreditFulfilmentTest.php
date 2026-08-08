@@ -229,4 +229,65 @@ class AccountCreditFulfilmentTest extends TestCase
             ->count());
         $this->assertSame(5000, app(AccountCreditLedger::class)->balanceMinor($this->profile));
     }
+
+    public function test_orphaned_credit_is_repaired_and_bank_mark_paid_blocked(): void
+    {
+        $reward = $this->approvedMilestoneReward();
+
+        // Simulate incomplete fulfilment: ledger credit exists, reward still approved.
+        $tx = app(AccountCreditLedger::class)->creditRewardFulfilment(
+            profile: $this->profile,
+            amountMinor: $reward->amount_minor,
+            currency: $reward->currency,
+            rewardId: $reward->id,
+            actor: $this->admin,
+        );
+
+        $this->assertSame('approved', $reward->fresh()->status);
+        $this->assertNull($reward->fresh()->account_credit_transaction_id);
+        $this->assertSame(1, AccountCreditTransaction::count());
+
+        $ok = app(AccountCreditFulfilmentService::class)->apply($reward->fresh(), $this->admin);
+        $this->assertTrue($ok);
+
+        $reward->refresh();
+        $this->assertSame('paid', $reward->status);
+        $this->assertSame(PayoutMethod::AccountCredit->value, $reward->payment_method);
+        $this->assertSame($tx->id, $reward->account_credit_transaction_id);
+        $this->assertNotNull($reward->paid_at);
+        $this->assertSame(1, AccountCreditTransaction::count());
+
+        // Bank Transfer Mark Paid must no longer succeed.
+        $this->assertFalse(app(RewardsEngine::class)->markPaid(
+            $reward->fresh(),
+            $this->admin,
+            paymentMethod: PayoutMethod::BankTransfer->value,
+            paymentReference: 'SHOULD-FAIL',
+        ));
+        $this->assertSame(PayoutMethod::AccountCredit->value, $reward->fresh()->payment_method);
+        $this->assertSame($tx->id, $reward->fresh()->account_credit_transaction_id);
+    }
+
+    public function test_apply_requires_account_credit_payout_preference(): void
+    {
+        MemberPayoutProfile::query()->where('ambassador_profile_id', $this->profile->id)->delete();
+        MemberPayoutProfile::factory()->forProfile($this->profile)->bankTransfer()->create();
+
+        $reward = $this->approvedMilestoneReward();
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Account Credit fulfilment requires the member preferred payout method to be Account Credit.');
+        app(AccountCreditFulfilmentService::class)->apply($reward, $this->admin);
+    }
+
+    public function test_apply_succeeds_when_preference_is_account_credit(): void
+    {
+        $reward = $this->approvedMilestoneReward();
+        $this->assertSame(
+            PayoutMethod::AccountCredit,
+            $this->profile->fresh()->payoutProfile->preferred_method,
+        );
+        $this->assertTrue(app(AccountCreditFulfilmentService::class)->apply($reward, $this->admin));
+        $this->assertSame('paid', $reward->fresh()->status);
+    }
 }

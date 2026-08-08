@@ -73,12 +73,24 @@ class RewardsEngine
         }, attempts: 3);
     }
 
+    /**
+     * Reject a non-milestone reward.
+     *
+     * Milestone claims must use MilestoneProgressionService::rejectAndRelease()
+     * or rejectAndConsume() so ReferralAllocation disposition stays canonical.
+     * Calling reject() on origin=milestone_claim returns false and does nothing.
+     */
     public function reject(Reward $reward, ?User $actor = null, ?string $note = null): bool
     {
         return (bool) DB::transaction(function () use ($reward, $actor, $note) {
             /** @var Reward|null $locked */
             $locked = Reward::query()->whereKey($reward->id)->lockForUpdate()->first();
             if (! $locked || ! in_array($locked->status, ['pending_approval', 'approved'], true)) {
+                return false;
+            }
+
+            // Keep one canonical allocation disposition path for milestone claims.
+            if ($locked->origin === 'milestone_claim') {
                 return false;
             }
 

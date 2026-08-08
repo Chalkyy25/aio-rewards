@@ -104,6 +104,43 @@ class AttributionCookieSecurityTest extends TestCase
         $this->assertNull(app(AttributionCookie::class)->validatePayload($payload));
     }
 
+    public function test_missing_set_at_with_old_click_is_rejected(): void
+    {
+        $click = ReferralClick::factory()->create([
+            'ambassador_profile_id' => $this->profile->id,
+            'referral_code_snapshot' => 'TESTCODE',
+            'attribution_id' => '01OLDCLICKATTR00000000001',
+            'created_at' => now()->subDays(45),
+        ]);
+
+        $this->assertNull(app(AttributionCookie::class)->validatePayload([
+            'v' => 1,
+            'code' => 'TESTCODE',
+            'attribution_id' => $click->attribution_id,
+            // no set_at
+        ]));
+    }
+
+    public function test_missing_set_at_with_fresh_click_is_accepted(): void
+    {
+        $click = ReferralClick::factory()->create([
+            'ambassador_profile_id' => $this->profile->id,
+            'referral_code_snapshot' => 'TESTCODE',
+            'attribution_id' => '01FRESHCLICKATTR000000001',
+            'created_at' => now()->subDays(2),
+        ]);
+
+        $validated = app(AttributionCookie::class)->validatePayload([
+            'v' => 1,
+            'code' => 'TESTCODE',
+            'attribution_id' => $click->attribution_id,
+        ]);
+
+        $this->assertNotNull($validated);
+        $this->assertSame('TESTCODE', $validated['code']);
+        $this->assertSame($click->attribution_id, $validated['attribution_id']);
+    }
+
     public function test_referral_code_substitution_attempt_is_rejected(): void
     {
         $other = User::factory()->create(['is_active' => true, 'email_verified_at' => now()]);

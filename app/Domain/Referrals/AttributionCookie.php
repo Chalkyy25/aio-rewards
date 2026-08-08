@@ -105,16 +105,6 @@ class AttributionCookie
         }
 
         $days = (int) config('referrals.cookie.days', 30);
-        if ($setAtRaw) {
-            try {
-                $setAt = Carbon::parse($setAtRaw);
-            } catch (\Throwable) {
-                return null;
-            }
-            if ($setAt->copy()->addDays($days)->isPast()) {
-                return null;
-            }
-        }
 
         // Bind code to a real click row — prevents forged JSON substituting
         // another ambassador's referral_code while keeping a stolen attribution_id.
@@ -127,6 +117,23 @@ class AttributionCookie
         }
 
         if (strtoupper((string) $click->referral_code_snapshot) !== $code) {
+            return null;
+        }
+
+        // Expiry: prefer payload set_at, fall back to the click timestamp so
+        // cookies without set_at still expire.
+        $expiryAnchor = null;
+        if ($setAtRaw) {
+            try {
+                $expiryAnchor = Carbon::parse($setAtRaw);
+            } catch (\Throwable) {
+                return null;
+            }
+        } elseif ($click->created_at) {
+            $expiryAnchor = $click->created_at->copy();
+        }
+
+        if ($expiryAnchor && $expiryAnchor->copy()->addDays($days)->isPast()) {
             return null;
         }
 

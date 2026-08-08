@@ -63,7 +63,7 @@ final class ApplyAccountCreditActionFactory
             ->action(function (Reward $r, array $data, AccountCreditFulfilmentService $service) {
                 try {
                     $ok = $service->apply($r, Auth::user(), $data['note'] ?? null);
-                } catch (RewardFundingIntegrityException $e) {
+                } catch (RewardFundingIntegrityException|\InvalidArgumentException $e) {
                     Notification::make()
                         ->title('Cannot apply Account Credit')
                         ->body($e->getMessage())

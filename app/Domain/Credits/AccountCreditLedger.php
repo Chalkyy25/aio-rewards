@@ -17,6 +17,10 @@ use RuntimeException;
  * same DB transaction as each ledger insert.
  *
  * Money is always integer minor units. Never floats.
+ *
+ * Deferred (not in this patch): periodic reconcile of account_credit_balances
+ * against SUM(account_credit_transactions). Cache updates are transactional
+ * with inserts today; a background reconcile job remains future work.
  */
 class AccountCreditLedger
 {

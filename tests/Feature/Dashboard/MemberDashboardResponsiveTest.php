@@ -99,9 +99,11 @@ class MemberDashboardResponsiveTest extends TestCase
         $this->assertStringContainsString('aria-modal="true"', $body);
         // Nav items — same set as the desktop sidebar.
         $this->assertStringContainsString('data-testid="drawer-nav-dashboard"', $body);
+        $this->assertStringContainsString('data-testid="drawer-nav-payout-settings"', $body);
         $this->assertStringContainsString('data-testid="drawer-nav-security"', $body);
         $this->assertStringContainsString('data-testid="drawer-nav-logout"', $body);
         $this->assertStringContainsString('My Rewards', $body);
+        $this->assertStringContainsString('Payout Settings', $body);
         $this->assertStringContainsString('Account Security', $body);
         $this->assertStringContainsString('Sign out', $body);
     }

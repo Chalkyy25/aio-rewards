@@ -6,6 +6,7 @@ use Database\Factories\AmbassadorProfileFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
 /**
@@ -18,6 +19,7 @@ use Illuminate\Support\Carbon;
  * @property bool $flagged_for_review
  * @property ?string $flagged_reason
  * @property Carbon $activated_at
+ * @property ?Carbon $payout_prompt_sent_at
  */
 class AmbassadorProfile extends Model
 {
@@ -34,6 +36,7 @@ class AmbassadorProfile extends Model
         'flagged_for_review',
         'flagged_reason',
         'activated_at',
+        'payout_prompt_sent_at',
     ];
 
     /**
@@ -44,6 +47,7 @@ class AmbassadorProfile extends Model
         return [
             'flagged_for_review' => 'boolean',
             'activated_at' => 'datetime',
+            'payout_prompt_sent_at' => 'datetime',
         ];
     }
 
@@ -73,8 +77,23 @@ class AmbassadorProfile extends Model
         return $this->hasMany(ReferralAllocation::class);
     }
 
+    /** @return HasOne<MemberPayoutProfile, $this> */
+    public function payoutProfile(): HasOne
+    {
+        return $this->hasOne(MemberPayoutProfile::class);
+    }
+
     public function referralUrl(): string
     {
         return url('/r/'.$this->referral_code);
+    }
+
+    public function hasConfiguredPayoutMethod(): bool
+    {
+        $payout = $this->relationLoaded('payoutProfile')
+            ? $this->payoutProfile
+            : $this->payoutProfile()->first();
+
+        return $payout?->isConfigured() ?? false;
     }
 }

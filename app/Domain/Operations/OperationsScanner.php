@@ -296,7 +296,7 @@ class OperationsScanner
         $threshold = now()->subHours($hours);
 
         $q = Reward::query()
-            ->with(['ambassadorProfile.user', 'tier'])
+            ->with(['ambassadorProfile.user', 'ambassadorProfile.payoutProfile', 'tier'])
             ->where('status', 'approved')
             ->whereNull('paid_at')
             ->whereNotNull('approved_at')
@@ -313,6 +313,10 @@ class OperationsScanner
             $meta = $this->rewardOpsMeta($r, claimedAt: $r->created_at, approvedAt: $r->approved_at);
             $outstandingHours = $r->approved_at ? (int) $r->approved_at->diffInHours(now()) : $hours;
 
+            // Safe operational flags only — never bank/PayPal secrets.
+            $configured = (bool) $profile->hasConfiguredPayoutMethod();
+            $method = $profile->payoutProfile?->preferred_method?->value;
+
             yield new OperationsSpec(
                 type: OperationsType::RewardApprovedAwaitingPayment,
                 dedupeKey: 'reward-approved-awaiting-payment:'.$r->id,
@@ -325,6 +329,8 @@ class OperationsScanner
                 meta: array_merge($meta, [
                     'threshold_hours' => $hours,
                     'outstanding_hours' => $outstandingHours,
+                    'payout_configured' => $configured,
+                    'preferred_payout_method' => $method,
                 ]),
             );
         }

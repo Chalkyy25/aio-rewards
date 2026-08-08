@@ -28,7 +28,12 @@ class AmbassadorProfilePolicy
 
     public function view(User $user, AmbassadorProfile $profile): bool
     {
-        return $user->id === $profile->user_id;
+        if ($user->id === $profile->user_id) {
+            return true;
+        }
+
+        // Support may inspect Rewards Member records (masked payout details only).
+        return $user->hasRole(RoleEnum::Support->value);
     }
 
     public function update(User $user, AmbassadorProfile $profile): bool

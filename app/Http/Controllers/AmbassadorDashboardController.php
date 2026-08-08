@@ -76,8 +76,14 @@ class AmbassadorDashboardController extends Controller
             }
         }
 
+        $needsPayoutDetails = false;
+        if ($profile && ($stats['approved_reward_minor'] ?? 0) > 0) {
+            $needsPayoutDetails = ! $profile->hasConfiguredPayoutMethod();
+        }
+
         return view('ambassador.dashboard', [
             'stats' => $stats,
+            'needsPayoutDetails' => $needsPayoutDetails,
         ]);
     }
 }

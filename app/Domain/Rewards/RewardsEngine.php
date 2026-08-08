@@ -3,145 +3,112 @@
 namespace App\Domain\Rewards;
 
 use App\Domain\Rewards\Events\RewardApproved;
-use App\Domain\Rewards\Events\RewardCreated;
 use App\Domain\Rewards\Events\RewardPaid;
 use App\Domain\Rewards\Events\RewardReversed;
-use App\Models\AmbassadorProfile;
+use App\Enums\PayoutMethod;
 use App\Models\ReferralConversion;
 use App\Models\Reward;
-use App\Models\RewardRule;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Central owner of the Reward lifecycle. Evaluates every active
- * RewardRule against the approving ambassador's totals and creates
- * Reward rows via the DB unique index (ambassador × rule × milestone)
- * to eliminate duplicates even under concurrent approvals.
+ * Central owner of the Reward lifecycle transitions.
+ *
+ * New rewards are created exclusively via MilestoneProgressionService.
+ * The legacy every_n_cash auto-mint path is disabled for launch.
  */
 class RewardsEngine
 {
+    public function __construct(
+        private readonly RewardFundingIntegrityService $funding,
+    ) {}
+
     /**
-     * Evaluate all active rules for the ambassador whose conversion just
-     * got approved. Called by the ReferralConversionApproved listener.
+     * Legacy every_n_cash evaluation — DISABLED for launch.
      *
-     * @return array<int, Reward> freshly-created rewards
+     * Milestone progression + ReferralAllocation is the single source of
+     * truth for new rewards. Historical RewardRule / Reward rows are retained.
+     *
+     * @return array<int, Reward>
      */
     public function onConversionApproved(ReferralConversion $conversion): array
     {
-        $profile = $conversion->ambassadorProfile()->first();
-        if (! $profile || ! $profile->user?->is_active) {
-            return [];
-        }
-        if ($profile->flagged_for_review) {
-            return [];
-        }
-
-        $approvedCount = ReferralConversion::query()
-            ->where('ambassador_profile_id', $profile->id)
-            ->where('status', 'approved')
-            ->count();
-
-        $created = [];
-        foreach (RewardRule::query()->where('is_active', true)->get() as $rule) {
-            $reward = $this->evaluateRule($rule, $profile, $conversion, $approvedCount);
-            if ($reward) {
-                $created[] = $reward;
-            }
-        }
-
-        return $created;
+        return [];
     }
 
-    private function evaluateRule(
-        RewardRule $rule,
-        AmbassadorProfile $profile,
-        ReferralConversion $conversion,
-        int $approvedCount,
-    ): ?Reward {
-        if ($rule->kind !== 'every_n_cash') {
-            return null; // reserved for later kinds
-        }
-        if ($rule->trigger_count < 1 || $rule->amount_minor <= 0) {
-            return null;
-        }
-        // Milestone bucket hit only when the counter lands exactly on a multiple.
-        if ($approvedCount === 0 || $approvedCount % $rule->trigger_count !== 0) {
-            return null;
-        }
-        $milestone = intdiv($approvedCount, $rule->trigger_count);
-
-        // Unique index guarantees exactly-once creation even if two approval
-        // events race against each other.
-        return DB::transaction(function () use ($rule, $profile, $conversion, $milestone) {
-            $existing = Reward::where('ambassador_profile_id', $profile->id)
-                ->where('reward_rule_id', $rule->id)
-                ->where('milestone_index', $milestone)
-                ->lockForUpdate()
-                ->first();
-            if ($existing) {
-                return null;
-            }
-
-            $reward = Reward::create([
-                'ambassador_profile_id' => $profile->id,
-                'reward_rule_id' => $rule->id,
-                'trigger_conversion_id' => $conversion->id,
-                'milestone_index' => $milestone,
-                'amount_minor' => $rule->amount_minor,
-                'currency' => $rule->currency,
-                'status' => 'pending_approval',
-            ]);
-
-            AuditLogger::record('reward.created', $reward, after: [
-                'rule' => $rule->name,
-                'milestone' => $milestone,
-                'amount_minor' => $reward->amount_minor,
-            ]);
-            RewardCreated::dispatch($reward);
-
-            return $reward;
-        });
-    }
-
+    /**
+     * @throws RewardFundingIntegrityException
+     */
     public function approve(Reward $reward, ?User $actor = null): bool
     {
-        if ($reward->status !== 'pending_approval') {
-            return false;
-        }
-        $reward->update([
-            'status' => 'approved',
-            'approved_at' => now(),
-            'approved_by_user_id' => $actor?->getKey(),
-        ]);
-        AuditLogger::record('reward.approved', $reward, actor: $actor);
-        RewardApproved::dispatch($reward->fresh());
+        return (bool) DB::transaction(function () use ($reward, $actor) {
+            /** @var Reward|null $locked */
+            $locked = Reward::query()->whereKey($reward->id)->lockForUpdate()->first();
+            if (! $locked || $locked->status !== 'pending_approval') {
+                return false;
+            }
 
-        return true;
+            $this->funding->assertFundable($locked);
+
+            $updated = Reward::query()
+                ->whereKey($locked->id)
+                ->where('status', 'pending_approval')
+                ->update([
+                    'status' => 'approved',
+                    'approved_at' => now(),
+                    'approved_by_user_id' => $actor?->getKey(),
+                    'updated_at' => now(),
+                ]);
+
+            if ($updated !== 1) {
+                return false;
+            }
+
+            $fresh = $locked->fresh();
+            AuditLogger::record('reward.approved', $fresh, actor: $actor);
+            RewardApproved::dispatch($fresh);
+
+            return true;
+        }, attempts: 3);
     }
 
     public function reject(Reward $reward, ?User $actor = null, ?string $note = null): bool
     {
-        if (! in_array($reward->status, ['pending_approval', 'approved'], true)) {
-            return false;
-        }
-        $reward->update([
-            'status' => 'rejected',
-            'rejected_at' => now(),
-            'rejected_by_user_id' => $actor?->getKey(),
-            'note' => $note ?: $reward->note,
-        ]);
-        AuditLogger::record('reward.rejected', $reward, actor: $actor, after: ['note' => $note]);
+        return (bool) DB::transaction(function () use ($reward, $actor, $note) {
+            /** @var Reward|null $locked */
+            $locked = Reward::query()->whereKey($reward->id)->lockForUpdate()->first();
+            if (! $locked || ! in_array($locked->status, ['pending_approval', 'approved'], true)) {
+                return false;
+            }
 
-        return true;
+            $updated = Reward::query()
+                ->whereKey($locked->id)
+                ->whereIn('status', ['pending_approval', 'approved'])
+                ->update([
+                    'status' => 'rejected',
+                    'rejected_at' => now(),
+                    'rejected_by_user_id' => $actor?->getKey(),
+                    'note' => $note ?: $locked->note,
+                    'updated_at' => now(),
+                ]);
+
+            if ($updated !== 1) {
+                return false;
+            }
+
+            AuditLogger::record('reward.rejected', $locked->fresh(), actor: $actor, after: ['note' => $note]);
+
+            return true;
+        }, attempts: 3);
     }
 
     /**
-     * Record that an admin has manually paid an approved reward.
+     * Record that an admin has manually paid an approved reward via Bank Transfer
+     * (or other external method). Does NOT move money and must NOT be used for
+     * Account Credit — use AccountCreditFulfilmentService instead.
      *
-     * This never initiates a bank transfer — it only stores payment metadata
-     * after the operator confirms they sent the money outside AIO Rewards.
+     * @throws RewardFundingIntegrityException
      */
     public function markPaid(
         Reward $reward,
@@ -150,52 +117,95 @@ class RewardsEngine
         ?string $paymentMethod = null,
         ?string $paymentReference = null,
     ): bool {
-        if ($reward->status !== 'approved') {
-            return false;
-        }
+        return (bool) DB::transaction(function () use ($reward, $actor, $note, $paymentMethod, $paymentReference) {
+            /** @var Reward|null $locked */
+            $locked = Reward::query()->whereKey($reward->id)->lockForUpdate()->first();
+            if (! $locked || $locked->status !== 'approved') {
+                return false;
+            }
 
-        $method = $paymentMethod
-            ?: $reward->ambassadorProfile?->payoutProfile?->preferred_method?->value
-            ?: 'bank_transfer';
+            $method = $paymentMethod
+                ?: $locked->ambassadorProfile?->payoutProfile?->preferred_method?->value
+                ?: PayoutMethod::BankTransfer->value;
 
-        $reward->update([
-            'status' => 'paid',
-            'paid_at' => now(),
-            'paid_by_user_id' => $actor?->getKey(),
-            'payment_method' => $method,
-            'payment_reference' => $paymentReference !== null && $paymentReference !== ''
-                ? $paymentReference
-                : $reward->payment_reference,
-            'note' => $note !== null && $note !== '' ? $note : $reward->note,
-        ]);
-        AuditLogger::record(
-            'reward.paid',
-            $reward,
-            actor: $actor,
-            after: [
-                'payment_method' => $method,
-                'has_payment_reference' => filled($paymentReference),
-            ],
-        );
-        RewardPaid::dispatch($reward->fresh());
+            if ($method === PayoutMethod::AccountCredit->value) {
+                // Account Credit must go through the ledger fulfilment path.
+                return false;
+            }
 
-        return true;
+            $this->funding->assertFundable($locked);
+
+            $updated = Reward::query()
+                ->whereKey($locked->id)
+                ->where('status', 'approved')
+                ->update([
+                    'status' => 'paid',
+                    'paid_at' => now(),
+                    'paid_by_user_id' => $actor?->getKey(),
+                    'payment_method' => $method,
+                    'payment_reference' => $paymentReference !== null && $paymentReference !== ''
+                        ? $paymentReference
+                        : $locked->payment_reference,
+                    'note' => $note !== null && $note !== '' ? $note : $locked->note,
+                    'updated_at' => now(),
+                ]);
+
+            if ($updated !== 1) {
+                return false;
+            }
+
+            $fresh = $locked->fresh();
+            AuditLogger::record(
+                'reward.paid',
+                $fresh,
+                actor: $actor,
+                after: [
+                    'payment_method' => $method,
+                    'has_payment_reference' => filled($paymentReference),
+                ],
+            );
+            RewardPaid::dispatch($fresh);
+
+            return true;
+        }, attempts: 3);
     }
 
+    /**
+     * Reverse a historically paid reward for accounting. Unpaid rewards must
+     * use reject-and-release / reject-and-consume (milestone) or reject().
+     *
+     * Does not destroy payment metadata. Does not release allocations
+     * (paid reverse keeps referrals consumed per project invariant).
+     */
     public function reverse(Reward $reward, ?User $actor = null, ?string $note = null): bool
     {
-        if ($reward->status === 'reversed') {
-            return false;
-        }
-        $reward->update([
-            'status' => 'reversed',
-            'reversed_at' => now(),
-            'reversed_by_user_id' => $actor?->getKey(),
-            'note' => $note ?: $reward->note,
-        ]);
-        AuditLogger::record('reward.reversed', $reward, actor: $actor, after: ['note' => $note]);
-        RewardReversed::dispatch($reward->fresh());
+        return (bool) DB::transaction(function () use ($reward, $actor, $note) {
+            /** @var Reward|null $locked */
+            $locked = Reward::query()->whereKey($reward->id)->lockForUpdate()->first();
+            if (! $locked || $locked->status !== 'paid') {
+                return false;
+            }
 
-        return true;
+            $updated = Reward::query()
+                ->whereKey($locked->id)
+                ->where('status', 'paid')
+                ->update([
+                    'status' => 'reversed',
+                    'reversed_at' => now(),
+                    'reversed_by_user_id' => $actor?->getKey(),
+                    'note' => $note ?: $locked->note,
+                    'updated_at' => now(),
+                ]);
+
+            if ($updated !== 1) {
+                return false;
+            }
+
+            $fresh = $locked->fresh();
+            AuditLogger::record('reward.reversed', $fresh, actor: $actor, after: ['note' => $note]);
+            RewardReversed::dispatch($fresh);
+
+            return true;
+        }, attempts: 3);
     }
 }

@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Domain\Billing\StripeCheckoutService;
-use App\Models\AmbassadorProfile;
+use App\Domain\Referrals\AttributionCookie;
 use App\Models\Package;
 use App\Models\Purchase;
 use Illuminate\Http\RedirectResponse;
@@ -72,20 +72,15 @@ class CheckoutController extends Controller
             ->where('created_at', '>=', now()->subMinutes(10))
             ->latest()->first();
 
-        // Attribution: read cookie set by /r/{code} route.
+        // Attribution: encrypted + validated cookie set by /r/{code}.
         $attrCode = null;
         $attrId = null;
         $ambId = null;
-        $raw = $request->cookie(config('referrals.cookie.name', 'aior_ref'));
-        if (is_string($raw) && $raw !== '') {
-            $payload = json_decode($raw, true);
-            if (is_array($payload)) {
-                $attrCode = $payload['code'] ?? null;
-                $attrId = $payload['attribution_id'] ?? null;
-                if ($attrCode) {
-                    $ambId = AmbassadorProfile::where('referral_code', $attrCode)->value('id');
-                }
-            }
+        $payload = app(AttributionCookie::class)->read($request);
+        if ($payload) {
+            $attrCode = $payload['code'];
+            $attrId = $payload['attribution_id'];
+            $ambId = app(AttributionCookie::class)->ambassadorProfileId($payload);
         }
 
         $purchase = $recent ?: Purchase::create([

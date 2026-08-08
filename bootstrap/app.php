@@ -35,7 +35,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Stripe posts raw JSON with an HMAC signature; CSRF and cookie
         // encryption must not touch the request body or headers.
         $middleware->validateCsrfTokens(except: ['webhooks/stripe']);
-        $middleware->encryptCookies(except: ['aior_ref']);
+        // aior_ref is encrypted by Laravel's cookie middleware (do not except it).
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         // Customers must never see Laravel's raw "419 Page Expired" screen.

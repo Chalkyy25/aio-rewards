@@ -10,7 +10,6 @@ use App\Domain\Provider\Drivers\XtreamVerificationDriver;
 use App\Domain\Referrals\Events\ReferralConversionApproved;
 use App\Domain\Settings\SettingsRepository;
 use App\Listeners\EvaluateMilestoneUnlockForApprovedConversion;
-use App\Listeners\EvaluateRewardsForApprovedConversion;
 use App\Listeners\MarkMilestoneUnlockNotificationSent;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Http\Client\Factory as HttpFactory;
@@ -23,7 +22,7 @@ class DomainServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        $this->app->singleton(\App\Domain\Settings\SettingsRepository::class);
+        $this->app->singleton(SettingsRepository::class);
 
         $this->app->singleton(CustomerVerificationContract::class, function (Application $app) {
             $key = (string) config('provider.driver');
@@ -100,10 +99,8 @@ class DomainServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        Event::listen(
-            ReferralConversionApproved::class,
-            EvaluateRewardsForApprovedConversion::class,
-        );
+        // Legacy every_n_cash auto-reward path intentionally NOT registered.
+        // Milestone progression + ReferralAllocation is the sole earn path.
         Event::listen(
             ReferralConversionApproved::class,
             EvaluateMilestoneUnlockForApprovedConversion::class,

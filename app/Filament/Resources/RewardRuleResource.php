@@ -8,9 +8,11 @@ use Filament\Actions\BulkActionGroup;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
+use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
+use Filament\Notifications\Notification;
 use Filament\Resources\Pages\PageRegistration;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
@@ -20,6 +22,10 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 
+/**
+ * Historical Reward Rules admin. Legacy every_n_cash auto-mint is disabled
+ * for launch — rules can be viewed but cannot be re-activated.
+ */
 class RewardRuleResource extends Resource
 {
     protected static ?string $model = RewardRule::class;
@@ -28,7 +34,7 @@ class RewardRuleResource extends Resource
 
     protected static string|null|\BackedEnum $navigationIcon = 'heroicon-o-scale';
 
-    protected static ?string $navigationLabel = 'Reward Rules';
+    protected static ?string $navigationLabel = 'Reward Rules (legacy)';
 
     protected static ?int $navigationSort = 40;
 
@@ -36,30 +42,41 @@ class RewardRuleResource extends Resource
     {
         return $schema->components([
             Section::make('Rule')->schema([
-                TextInput::make('name')->required()->maxLength(190),
+                Placeholder::make('legacy_notice')
+                    ->label('Launch notice')
+                    ->content('Legacy every_n_cash automatic rewards are disabled. Milestone progression + ReferralAllocation is the sole earn path. Historical rules are retained read-mostly; activating every_n_cash is blocked.'),
+                TextInput::make('name')->required()->maxLength(190)->disabled(fn (?RewardRule $record) => $record !== null),
                 Select::make('kind')->required()->default('every_n_cash')->options([
-                    'every_n_cash' => 'Every X approved conversions → fixed cash',
+                    'every_n_cash' => 'Every X approved conversions → fixed cash (DISABLED)',
                     'percentage' => 'Percentage of sale (coming soon)',
                     'lifetime_revenue' => 'Lifetime revenue bonus (coming soon)',
-                ])->live(),
+                ])->live()->disabled(fn (?RewardRule $record) => $record !== null),
                 TextInput::make('trigger_count')
                     ->label('Every N approved conversions')
                     ->numeric()->minValue(1)->default(5)->required()
-                    ->visible(fn ($get) => $get('kind') === 'every_n_cash'),
+                    ->visible(fn ($get) => $get('kind') === 'every_n_cash')
+                    ->disabled(fn (?RewardRule $record) => $record !== null),
                 TextInput::make('amount_minor')
                     ->label('Reward amount (minor units, pence)')
                     ->numeric()->minValue(0)->required()
                     ->helperText('£50.00 → 5000.')
-                    ->visible(fn ($get) => $get('kind') === 'every_n_cash'),
-                TextInput::make('currency')->required()->default('gbp')->maxLength(3),
+                    ->visible(fn ($get) => $get('kind') === 'every_n_cash')
+                    ->disabled(fn (?RewardRule $record) => $record !== null),
+                TextInput::make('currency')->required()->default('gbp')->maxLength(3)
+                    ->disabled(fn (?RewardRule $record) => $record !== null),
                 TextInput::make('percentage_bps')
                     ->label('Percentage (basis points)')
                     ->numeric()->minValue(0)
-                    ->visible(fn ($get) => $get('kind') === 'percentage'),
+                    ->visible(fn ($get) => $get('kind') === 'percentage')
+                    ->disabled(),
             ])->columns(2),
 
             Section::make('Availability')->schema([
-                Toggle::make('is_active')->default(true),
+                Toggle::make('is_active')
+                    ->default(false)
+                    ->helperText('every_n_cash rules cannot be activated for launch.')
+                    ->disabled(fn ($get) => $get('kind') === 'every_n_cash')
+                    ->dehydrated(),
                 TextInput::make('sort_order')->numeric()->default(0),
             ])->columns(2),
         ]);
@@ -80,8 +97,36 @@ class RewardRuleResource extends Resource
             ])
             ->defaultSort('sort_order')
             ->filters([TernaryFilter::make('is_active')])
-            ->recordActions([EditAction::make()])
-            ->headerActions([CreateAction::make()])
+            ->recordActions([
+                EditAction::make()
+                    ->mutateFormDataUsing(function (array $data): array {
+                        // Hard-block reactivating legacy every_n_cash.
+                        if (($data['kind'] ?? null) === 'every_n_cash') {
+                            $data['is_active'] = false;
+                        }
+
+                        return $data;
+                    })
+                    ->after(function (RewardRule $record): void {
+                        if ($record->kind === 'every_n_cash' && $record->is_active) {
+                            $record->update(['is_active' => false]);
+                            Notification::make()
+                                ->title('Legacy every_n_cash cannot be activated')
+                                ->danger()
+                                ->send();
+                        }
+                    }),
+            ])
+            ->headerActions([
+                CreateAction::make()
+                    ->mutateFormDataUsing(function (array $data): array {
+                        if (($data['kind'] ?? null) === 'every_n_cash') {
+                            $data['is_active'] = false;
+                        }
+
+                        return $data;
+                    }),
+            ])
             ->toolbarActions([BulkActionGroup::make([DeleteBulkAction::make()])]);
     }
 

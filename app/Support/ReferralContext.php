@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Domain\Referrals\AttributionCookie;
 use App\Models\AmbassadorProfile;
 use Illuminate\Http\Request;
 
@@ -19,25 +20,20 @@ final class ReferralContext
     public static function referringName(?Request $request = null): ?string
     {
         $request ??= request();
-        $cookieName = (string) config('referrals.cookie.name', 'aior_ref');
-        $raw = $request->cookie($cookieName);
-        if (! is_string($raw) || $raw === '') {
+        $payload = app(AttributionCookie::class)->read($request);
+        if ($payload === null) {
             return null;
         }
-        if (array_key_exists($raw, self::$cache)) {
-            return self::$cache[$raw];
-        }
 
-        $payload = json_decode($raw, true);
-        $code = is_array($payload) ? ($payload['code'] ?? null) : null;
-        if (! is_string($code) || $code === '') {
-            return self::$cache[$raw] = null;
+        $cacheKey = $payload['attribution_id'];
+        if (array_key_exists($cacheKey, self::$cache)) {
+            return self::$cache[$cacheKey];
         }
 
         $profile = AmbassadorProfile::with('user:id,name')
-            ->where('referral_code', $code)
+            ->where('referral_code', $payload['code'])
             ->first();
 
-        return self::$cache[$raw] = $profile?->user?->name;
+        return self::$cache[$cacheKey] = $profile?->user?->name;
     }
 }

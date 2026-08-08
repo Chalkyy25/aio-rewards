@@ -4,10 +4,11 @@ namespace Tests\Feature\Rewards;
 
 use App\Domain\Referrals\ConversionService;
 use App\Domain\Rewards\Events\RewardApproved;
-use App\Domain\Rewards\Events\RewardCreated;
 use App\Domain\Rewards\Events\RewardPaid;
 use App\Domain\Rewards\Events\RewardReversed;
+use App\Domain\Rewards\RewardFundingIntegrityException;
 use App\Domain\Rewards\RewardsEngine;
+use App\Enums\PayoutMethod;
 use App\Models\AmbassadorProfile;
 use App\Models\AuditLog;
 use App\Models\Package;
@@ -38,12 +39,14 @@ class RewardsEngineTest extends TestCase
         $this->profile = AmbassadorProfile::factory()->for($user)->create([
             'flagged_for_review' => false,
         ]);
-        // Wipe the migration-seeded default rule so we test in isolation.
         RewardRule::query()->delete();
+        // Factory may request is_active=true, but model boot forces every_n_cash inactive.
         $this->rule = RewardRule::factory()->create([
             'trigger_count' => 5,
             'amount_minor' => 5000,
+            'is_active' => true,
         ]);
+        $this->assertFalse($this->rule->fresh()->is_active);
     }
 
     /** Approve $n conversions and return the last one. */
@@ -77,94 +80,31 @@ class RewardsEngineTest extends TestCase
         return $last;
     }
 
-    public function test_four_approved_conversions_do_not_create_a_reward(): void
+    public function test_legacy_auto_reward_path_is_disabled_even_with_seeded_rule_row(): void
     {
-        $this->approveConversions(4);
-        $this->assertSame(0, Reward::count());
-    }
-
-    public function test_fifth_approved_conversion_creates_the_first_reward(): void
-    {
-        Event::fake([RewardCreated::class]);
+        // Attempt to force-activate via query bypass of model boot (simulating DB tampering).
+        RewardRule::query()->whereKey($this->rule->id)->update(['is_active' => 1]);
+        $this->assertSame(1, (int) RewardRule::query()->whereKey($this->rule->id)->value('is_active'));
 
         $last = $this->approveConversions(5);
 
-        $reward = Reward::sole();
-        $this->assertSame($this->profile->id, $reward->ambassador_profile_id);
-        $this->assertSame($this->rule->id, $reward->reward_rule_id);
-        $this->assertSame(1, $reward->milestone_index);
-        $this->assertSame(5000, $reward->amount_minor);
-        $this->assertSame('pending_approval', $reward->status);
-        $this->assertSame($last->id, $reward->trigger_conversion_id);
-
-        Event::assertDispatched(RewardCreated::class, fn (RewardCreated $e) => $e->reward->id === $reward->id);
-        $this->assertTrue(AuditLog::where('action', 'reward.created')->exists());
-    }
-
-    public function test_tenth_approved_conversion_creates_the_second_reward(): void
-    {
-        $this->approveConversions(10);
-
-        $this->assertSame(2, Reward::count());
-        $indexes = Reward::pluck('milestone_index')->sort()->values()->all();
-        $this->assertSame([1, 2], $indexes);
-    }
-
-    public function test_engine_is_idempotent_when_called_twice_on_same_conversion(): void
-    {
-        $last = $this->approveConversions(5);
-
-        // Direct engine call again with the same conversion must not double-create.
-        app(RewardsEngine::class)->onConversionApproved($last);
-        app(RewardsEngine::class)->onConversionApproved($last);
-
-        $this->assertSame(1, Reward::count());
-    }
-
-    public function test_reversed_conversion_never_creates_a_reward(): void
-    {
-        // Approve 5 conversions then reverse the last one before firing the engine.
-        $last = $this->approveConversions(4);
-        $package = Package::factory()->create();
-        $purchase = Purchase::factory()->create([
-            'package_id' => $package->id,
-            'status' => 'paid',
-            'fulfilment_status' => 'completed',
-            'ambassador_profile_id_snapshot' => $this->profile->id,
-        ]);
-        $c = ReferralConversion::create([
-            'purchase_id' => $purchase->id,
-            'ambassador_profile_id' => $this->profile->id,
-            'referral_code_snapshot' => $this->profile->referral_code,
-            'status' => 'reversed', // never approved
-            'amount_minor' => 6000,
-            'currency' => 'gbp',
-            'reversed_at' => now(),
-            'reversed_reason' => 'refund',
-        ]);
-
-        app(RewardsEngine::class)->onConversionApproved($c);
+        // Listener removed + onConversionApproved is a no-op.
         $this->assertSame(0, Reward::count());
+        $this->assertSame([], app(RewardsEngine::class)->onConversionApproved($last));
     }
 
-    public function test_inactive_ambassador_never_earns_rewards(): void
+    public function test_legacy_rule_cannot_be_reactivated_via_eloquent(): void
     {
-        $this->profile->user->update(['is_active' => false]);
-        $this->approveConversions(5);
-        $this->assertSame(0, Reward::count());
-    }
-
-    public function test_flagged_ambassador_never_earns_rewards(): void
-    {
-        $this->profile->update(['flagged_for_review' => true]);
-        $this->approveConversions(5);
-        $this->assertSame(0, Reward::count());
+        $this->rule->update(['is_active' => true]);
+        $this->assertFalse($this->rule->fresh()->is_active);
     }
 
     public function test_manual_approve_transitions_and_dispatches_event(): void
     {
         Event::fake([RewardApproved::class]);
-        $reward = Reward::factory()->for($this->profile, 'ambassadorProfile')->for($this->rule, 'rule')->create();
+        $reward = Reward::factory()->for($this->profile, 'ambassadorProfile')->for($this->rule, 'rule')->create([
+            'origin' => 'legacy_rule',
+        ]);
         $admin = User::factory()->create();
 
         $this->assertTrue(app(RewardsEngine::class)->approve($reward, $admin));
@@ -173,28 +113,65 @@ class RewardsEngineTest extends TestCase
         Event::assertDispatched(RewardApproved::class);
     }
 
-    public function test_mark_paid_only_from_approved_state(): void
+    public function test_mark_paid_only_from_approved_state_for_bank_transfer(): void
     {
         Event::fake([RewardPaid::class]);
-        $reward = Reward::factory()->for($this->profile, 'ambassadorProfile')->for($this->rule, 'rule')->create();
+        $reward = Reward::factory()->for($this->profile, 'ambassadorProfile')->for($this->rule, 'rule')->create([
+            'origin' => 'legacy_rule',
+        ]);
 
-        // Cannot pay from pending_approval.
         $this->assertFalse(app(RewardsEngine::class)->markPaid($reward));
 
         app(RewardsEngine::class)->approve($reward);
-        $this->assertTrue(app(RewardsEngine::class)->markPaid($reward->fresh()));
+        $this->assertTrue(app(RewardsEngine::class)->markPaid(
+            $reward->fresh(),
+            paymentMethod: PayoutMethod::BankTransfer->value,
+        ));
 
         $this->assertSame('paid', $reward->fresh()->status);
         Event::assertDispatched(RewardPaid::class);
     }
 
-    public function test_reverse_dispatches_event_and_flips_status(): void
+    public function test_mark_paid_refuses_account_credit_method(): void
+    {
+        $reward = Reward::factory()->for($this->profile, 'ambassadorProfile')->for($this->rule, 'rule')->create([
+            'origin' => 'legacy_rule',
+            'status' => 'approved',
+            'approved_at' => now(),
+        ]);
+
+        $this->assertFalse(app(RewardsEngine::class)->markPaid(
+            $reward,
+            paymentMethod: PayoutMethod::AccountCredit->value,
+        ));
+        $this->assertSame('approved', $reward->fresh()->status);
+    }
+
+    public function test_reverse_only_from_paid_state(): void
     {
         Event::fake([RewardReversed::class]);
-        $reward = Reward::factory()->for($this->profile, 'ambassadorProfile')->for($this->rule, 'rule')->create(['status' => 'paid']);
+        $pending = Reward::factory()->for($this->profile, 'ambassadorProfile')->for($this->rule, 'rule')->create([
+            'status' => 'pending_approval',
+            'origin' => 'legacy_rule',
+        ]);
+        $approved = Reward::factory()->for($this->profile, 'ambassadorProfile')->for($this->rule, 'rule')->create([
+            'status' => 'approved',
+            'milestone_index' => 2,
+            'origin' => 'legacy_rule',
+        ]);
+        $paid = Reward::factory()->for($this->profile, 'ambassadorProfile')->for($this->rule, 'rule')->create([
+            'status' => 'paid',
+            'milestone_index' => 3,
+            'origin' => 'legacy_rule',
+            'paid_at' => now(),
+            'payment_method' => PayoutMethod::BankTransfer->value,
+        ]);
 
-        $this->assertTrue(app(RewardsEngine::class)->reverse($reward, note: 'refund'));
-        $this->assertSame('reversed', $reward->fresh()->status);
+        $this->assertFalse(app(RewardsEngine::class)->reverse($pending));
+        $this->assertFalse(app(RewardsEngine::class)->reverse($approved));
+        $this->assertTrue(app(RewardsEngine::class)->reverse($paid, note: 'refund'));
+        $this->assertSame('reversed', $paid->fresh()->status);
+        $this->assertSame(PayoutMethod::BankTransfer->value, $paid->fresh()->payment_method);
         Event::assertDispatched(RewardReversed::class);
     }
 
@@ -209,10 +186,51 @@ class RewardsEngineTest extends TestCase
         $this->assertFalse(app(RewardsEngine::class)->reject($r3));
     }
 
-    public function test_only_active_rules_are_evaluated(): void
+    public function test_double_approve_is_idempotent_no_duplicate_event(): void
     {
-        $this->rule->update(['is_active' => false]);
-        $this->approveConversions(5);
-        $this->assertSame(0, Reward::count());
+        Event::fake([RewardApproved::class]);
+        $reward = Reward::factory()->for($this->profile, 'ambassadorProfile')->for($this->rule, 'rule')->create([
+            'origin' => 'legacy_rule',
+        ]);
+
+        $this->assertTrue(app(RewardsEngine::class)->approve($reward));
+        $this->assertFalse(app(RewardsEngine::class)->approve($reward->fresh()));
+        Event::assertDispatchedTimes(RewardApproved::class, 1);
+    }
+
+    public function test_approve_refuses_compromised_funding_flag(): void
+    {
+        $reward = Reward::factory()->for($this->profile, 'ambassadorProfile')->for($this->rule, 'rule')->create([
+            'origin' => 'legacy_rule',
+            'funding_compromised_at' => now(),
+            'funding_compromise_reason' => 'refund',
+        ]);
+
+        $this->expectException(RewardFundingIntegrityException::class);
+        app(RewardsEngine::class)->approve($reward);
+    }
+
+    public function test_manual_conversion_approval_requires_paid_purchase(): void
+    {
+        $package = Package::factory()->create();
+        $purchase = Purchase::factory()->create([
+            'package_id' => $package->id,
+            'status' => 'refunded',
+            'ambassador_profile_id_snapshot' => $this->profile->id,
+            'referral_code_snapshot' => $this->profile->referral_code,
+        ]);
+        $conv = ReferralConversion::create([
+            'purchase_id' => $purchase->id,
+            'ambassador_profile_id' => $this->profile->id,
+            'referral_code_snapshot' => $this->profile->referral_code,
+            'status' => 'pending',
+            'amount_minor' => 6000,
+            'currency' => 'gbp',
+            'pending_until' => now()->subDay(),
+        ]);
+
+        $this->assertFalse(app(ConversionService::class)->approve($conv));
+        $this->assertSame('pending', $conv->fresh()->status);
+        $this->assertFalse(AuditLog::where('action', 'conversion.approved')->exists());
     }
 }

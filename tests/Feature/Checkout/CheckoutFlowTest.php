@@ -2,8 +2,10 @@
 
 namespace Tests\Feature\Checkout;
 
+use App\Models\AmbassadorProfile;
 use App\Models\Package;
 use App\Models\Purchase;
+use App\Models\ReferralClick;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -121,19 +123,32 @@ class CheckoutFlowTest extends TestCase
     {
         config(['stripe.secret' => '']); // avoid live API call
 
-        $ref = json_encode(['code' => 'PREVIEW1', 'attribution_id' => '01H000000000000000000ATTR1']);
+        $ambassador = AmbassadorProfile::factory()->create(['referral_code' => 'PREVIEW1']);
+        $click = ReferralClick::factory()->create([
+            'ambassador_profile_id' => $ambassador->id,
+            'referral_code_snapshot' => 'PREVIEW1',
+            'attribution_id' => '01H000000000000000000ATTR1',
+        ]);
+
+        $ref = json_encode([
+            'v' => 1,
+            'code' => 'PREVIEW1',
+            'attribution_id' => $click->attribution_id,
+            'set_at' => now()->toIso8601String(),
+        ]);
 
         $this->withSession(['checkout.details' => $this->validDetailsPayload([
             'package_slug' => 'test-package',
             'buyer_email' => 'buyer@example.com',
         ])])
-            ->withUnencryptedCookie(config('referrals.cookie.name', 'aior_ref'), $ref)
+            ->withCookie(config('referrals.cookie.name', 'aior_ref'), $ref)
             ->post('/checkout/test-package/pay');
 
         $this->assertDatabaseHas('purchases', [
             'buyer_email' => 'buyer@example.com',
             'referral_code_snapshot' => 'PREVIEW1',
             'attribution_id' => '01H000000000000000000ATTR1',
+            'ambassador_profile_id_snapshot' => $ambassador->id,
             'status' => 'pending',
         ]);
     }

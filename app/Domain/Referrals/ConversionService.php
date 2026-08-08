@@ -3,7 +3,7 @@
 namespace App\Domain\Referrals;
 
 use App\Domain\Referrals\Events\ReferralConversionApproved;
-use App\Models\AmbassadorProfile;
+use App\Domain\Rewards\RewardFundingIntegrityService;
 use App\Models\Purchase;
 use App\Models\ReferralConversion;
 use App\Models\User;
@@ -20,6 +20,10 @@ use Illuminate\Support\Facades\DB;
  */
 class ConversionService
 {
+    public function __construct(
+        private readonly RewardFundingIntegrityService $fundingIntegrity,
+    ) {}
+
     public function createPendingFromPurchase(Purchase $purchase): ?ReferralConversion
     {
         if (! $purchase->ambassador_profile_id_snapshot || ! $purchase->referral_code_snapshot) {
@@ -57,50 +61,85 @@ class ConversionService
 
     public function approve(ReferralConversion $conversion, ?User $actor = null, bool $auto = false): bool
     {
-        if ($conversion->status !== 'pending') {
-            return false;
-        }
-        $conversion->update([
-            'status' => 'approved',
-            'approved_at' => now(),
-            'approved_by_user_id' => $actor?->getKey(),
-        ]);
-        AuditLogger::record(
-            action: $auto ? 'conversion.approved_auto' : 'conversion.approved',
-            subject: $conversion,
-            actor: $actor,
-        );
+        return (bool) DB::transaction(function () use ($conversion, $actor, $auto) {
+            /** @var ReferralConversion|null $locked */
+            $locked = ReferralConversion::query()->whereKey($conversion->id)->lockForUpdate()->first();
+            if (! $locked || $locked->status !== 'pending') {
+                return false;
+            }
 
-        // Notify the ambassador (in-app + email) and emit event for the
-        // future Rewards Engine to hook into.
-        $ambassador = $conversion->ambassadorProfile()->with('user')->first();
-        if ($ambassador?->user) {
-            $ambassador->user->notify(new AmbassadorConversionApprovedNotification($conversion->fresh()));
-        }
-        ReferralConversionApproved::dispatch($conversion->fresh(), $auto);
+            // Manual and auto approval must refuse ineligible / unpaid purchases.
+            if (! $this->purchaseStillEligibleForApproval($locked)) {
+                return false;
+            }
 
-        return true;
+            $updated = ReferralConversion::query()
+                ->whereKey($locked->id)
+                ->where('status', 'pending')
+                ->update([
+                    'status' => 'approved',
+                    'approved_at' => now(),
+                    'approved_by_user_id' => $actor?->getKey(),
+                    'updated_at' => now(),
+                ]);
+
+            if ($updated !== 1) {
+                return false;
+            }
+
+            $fresh = $locked->fresh();
+            AuditLogger::record(
+                action: $auto ? 'conversion.approved_auto' : 'conversion.approved',
+                subject: $fresh,
+                actor: $actor,
+            );
+
+            $ambassador = $fresh->ambassadorProfile()->with('user')->first();
+            if ($ambassador?->user) {
+                $ambassador->user->notify(new AmbassadorConversionApprovedNotification($fresh));
+            }
+            ReferralConversionApproved::dispatch($fresh, $auto);
+
+            return true;
+        }, attempts: 3);
     }
 
     public function reverse(ReferralConversion $conversion, string $reason, ?User $actor = null): bool
     {
-        if ($conversion->status === 'reversed') {
-            return false;
-        }
-        $conversion->update([
-            'status' => 'reversed',
-            'reversed_at' => now(),
-            'reversed_by_user_id' => $actor?->getKey(),
-            'reversed_reason' => $reason,
-        ]);
-        AuditLogger::record(
-            action: 'conversion.reversed',
-            subject: $conversion,
-            after: ['reason' => $reason],
-            actor: $actor,
-        );
+        return (bool) DB::transaction(function () use ($conversion, $reason, $actor) {
+            /** @var ReferralConversion|null $locked */
+            $locked = ReferralConversion::query()->whereKey($conversion->id)->lockForUpdate()->first();
+            if (! $locked || $locked->status === 'reversed') {
+                return false;
+            }
 
-        return true;
+            $updated = ReferralConversion::query()
+                ->whereKey($locked->id)
+                ->where('status', '!=', 'reversed')
+                ->update([
+                    'status' => 'reversed',
+                    'reversed_at' => now(),
+                    'reversed_by_user_id' => $actor?->getKey(),
+                    'reversed_reason' => $reason,
+                    'updated_at' => now(),
+                ]);
+
+            if ($updated !== 1) {
+                return false;
+            }
+
+            $fresh = $locked->fresh();
+            AuditLogger::record(
+                action: 'conversion.reversed',
+                subject: $fresh,
+                after: ['reason' => $reason],
+                actor: $actor,
+            );
+
+            $this->fundingIntegrity->handleConversionReversed($fresh, $reason);
+
+            return true;
+        }, attempts: 3);
     }
 
     public function reverseByPurchase(Purchase $purchase, string $reason): void
@@ -183,6 +222,8 @@ class ConversionService
                 }
                 if ($this->approve($c, $actor, auto: true)) {
                     $approved++;
+                } else {
+                    $skipped++;
                 }
             });
         }
@@ -195,5 +236,15 @@ class ConversionService
         );
 
         return ['scanned' => $scanned, 'approved' => $approved, 'skipped' => $skipped];
+    }
+
+    private function purchaseStillEligibleForApproval(ReferralConversion $conversion): bool
+    {
+        $purchase = $conversion->purchase()->first();
+        if (! $purchase) {
+            return false;
+        }
+
+        return $purchase->status === 'paid';
     }
 }

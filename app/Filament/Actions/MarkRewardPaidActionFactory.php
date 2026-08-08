@@ -2,6 +2,7 @@
 
 namespace App\Filament\Actions;
 
+use App\Domain\Rewards\RewardFundingIntegrityException;
 use App\Domain\Rewards\RewardsEngine;
 use App\Enums\PayoutMethod;
 use App\Models\Reward;
@@ -15,6 +16,7 @@ use Illuminate\Support\Facades\Auth;
  * Shared Mark paid confirmation for Reward table + view pages.
  *
  * Records that an admin manually sent payment outside AIO Rewards.
+ * Hidden for Account Credit preferences — use Apply Account Credit instead.
  */
 final class MarkRewardPaidActionFactory
 {
@@ -24,7 +26,16 @@ final class MarkRewardPaidActionFactory
             ->label('Mark paid')
             ->icon('heroicon-o-banknotes')
             ->color('primary')
-            ->visible(fn (Reward $r) => $r->status === 'approved')
+            ->visible(function (Reward $r): bool {
+                if ($r->status !== 'approved') {
+                    return false;
+                }
+
+                $method = $r->ambassadorProfile?->payoutProfile?->preferred_method;
+
+                // Account Credit uses a dedicated fulfilment action.
+                return $method !== PayoutMethod::AccountCredit;
+            })
             ->modalHeading('Confirm payment')
             ->modalDescription(function (Reward $r) {
                 $payout = $r->ambassadorProfile?->payoutProfile;
@@ -53,14 +64,33 @@ final class MarkRewardPaidActionFactory
                 $method = $r->ambassadorProfile?->payoutProfile?->preferred_method?->value
                     ?: PayoutMethod::BankTransfer->value;
 
-                $engine->markPaid(
-                    $r,
-                    Auth::user(),
-                    $data['note'] ?? null,
-                    $method,
-                    $data['payment_reference'] ?? null,
-                );
-                Notification::make()->title('Reward marked paid')->success()->send();
+                try {
+                    $ok = $engine->markPaid(
+                        $r,
+                        Auth::user(),
+                        $data['note'] ?? null,
+                        $method,
+                        $data['payment_reference'] ?? null,
+                    );
+                } catch (RewardFundingIntegrityException $e) {
+                    Notification::make()
+                        ->title('Cannot mark paid')
+                        ->body($e->getMessage())
+                        ->danger()
+                        ->send();
+
+                    return;
+                }
+
+                if ($ok) {
+                    Notification::make()->title('Reward marked paid')->success()->send();
+                } else {
+                    Notification::make()
+                        ->title('Could not mark paid')
+                        ->body('Reward was not awaiting payment, or Account Credit must be applied via the dedicated action.')
+                        ->warning()
+                        ->send();
+                }
             });
     }
 }

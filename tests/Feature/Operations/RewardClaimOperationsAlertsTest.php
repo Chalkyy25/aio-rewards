@@ -132,7 +132,8 @@ class RewardClaimOperationsAlertsTest extends TestCase
         $reward = $this->makePendingClaim(claimedDaysAgo: 8);
         app(OperationsScanner::class)->scan();
 
-        app(RewardsEngine::class)->reverse($reward, note: 'chargeback');
+        // Reverse is paid-only; pending claims use reject.
+        app(RewardsEngine::class)->reject($reward, note: 'chargeback');
         app(OperationsScanner::class)->scan();
 
         $this->assertDatabaseHas('operations_items', [
@@ -199,7 +200,7 @@ class RewardClaimOperationsAlertsTest extends TestCase
         $reward = $this->makeApprovedUnpaid(approvedHoursAgo: 80);
         app(OperationsScanner::class)->scan();
 
-        app(RewardsEngine::class)->reverse($reward, note: 'reversed after approval');
+        app(RewardsEngine::class)->reject($reward, note: 'reversed after approval');
         app(OperationsScanner::class)->scan();
 
         $this->assertDatabaseHas('operations_items', [
@@ -266,7 +267,7 @@ class RewardClaimOperationsAlertsTest extends TestCase
             'reward_rule_id' => $this->rule->id,
             'milestone_tier_id' => $tier->id,
             'milestone_index' => 10,
-            'origin' => 'milestone_claim',
+            'origin' => 'legacy_rule',
             'amount_minor' => 11000,
             'status' => 'pending_approval',
             'tier_snapshot' => $tier->snapshot(),
@@ -322,7 +323,7 @@ class RewardClaimOperationsAlertsTest extends TestCase
             'milestone_tier_id' => $this->tier->id,
             'milestone_index' => $milestoneIndex,
             'cycle_number' => $milestoneIndex,
-            'origin' => 'milestone_claim',
+            'origin' => 'legacy_rule',
             'amount_minor' => 5000,
             'status' => 'pending_approval',
             'tier_snapshot' => $this->tier->snapshot(),
@@ -341,7 +342,7 @@ class RewardClaimOperationsAlertsTest extends TestCase
             'milestone_tier_id' => $this->tier->id,
             'milestone_index' => $milestoneIndex,
             'cycle_number' => $milestoneIndex,
-            'origin' => 'milestone_claim',
+            'origin' => 'legacy_rule',
             'amount_minor' => 5000,
             'status' => 'approved',
             'approved_at' => now()->subHours($approvedHoursAgo),

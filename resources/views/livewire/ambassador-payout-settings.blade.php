@@ -33,7 +33,11 @@
                     </div>
                 @else
                     <div data-testid="payout-account-credit-note">
-                        Approved rewards can be applied as account credit. No bank details are stored.
+                        Account Credit — add your reward to your AIO balance to use toward eligible AIO Media purchases or renewals.
+                        No bank details are stored.
+                        <div style="margin-top:.5rem">
+                            <a href="{{ route('ambassador.account-credit') }}" data-testid="payout-credit-balance-link">View Account Credit balance &amp; history</a>
+                        </div>
                     </div>
                 @endif
                 <div style="color:#64748b;margin-top:.35rem" data-testid="payout-last-updated">
@@ -79,8 +83,8 @@
         @elseif ($preferredMethod === 'account_credit')
             <div style="margin-top:1.25rem;background:#f8fafc;border-radius:.5rem;padding:1rem;color:#334155;font-size:.95rem"
                  data-testid="payout-credit-fields">
-                Approved rewards can be applied as account credit on your AIO Media services.
-                No bank details are required for this option.
+                <strong>Account Credit</strong> — add your reward to your AIO balance to use toward eligible AIO Media purchases or renewals.
+                No bank details are required for this option. Spending at checkout is not enabled yet; credited balances are held on your account.
             </div>
         @endif
 

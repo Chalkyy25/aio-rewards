@@ -89,18 +89,25 @@ class ReferralClickTest extends TestCase
     public function test_first_touch_cookie_is_not_overwritten_by_second_ambassador_click(): void
     {
         // First click sets cookie
-        $first = $this->disableCookieEncryption()->get('/r/TESTCODE');
-        $firstCookie = collect($first->headers->getCookies())->firstWhere(fn ($c) => $c->getName() === 'aior_ref');
-        $this->assertNotNull($firstCookie);
-        $firstValue = $firstCookie->getValue();
+        $first = $this->get('/r/TESTCODE');
+        $first->assertCookie('aior_ref');
+        $click = ReferralClick::first();
+        $this->assertNotNull($click);
+
+        $firstPayload = json_encode([
+            'v' => 1,
+            'code' => 'TESTCODE',
+            'attribution_id' => $click->attribution_id,
+            'set_at' => now()->toIso8601String(),
+        ], JSON_THROW_ON_ERROR);
 
         // A second ambassador
         $u2 = User::factory()->create(['is_active' => true, 'email_verified_at' => now()]);
         $u2->assignRole(RoleEnum::Ambassador->value);
         AmbassadorProfile::factory()->create(['user_id' => $u2->id, 'referral_code' => 'SECOND01']);
 
-        // Send the first-click cookie back on the second visit.
-        $second = $this->disableCookieEncryption()->withCookie('aior_ref', $firstValue)->get('/r/SECOND01');
+        // Send the first-click cookie back on the second visit (encrypted by test client).
+        $second = $this->withCookie('aior_ref', $firstPayload)->get('/r/SECOND01');
         $secondCookie = collect($second->headers->getCookies())
             ->firstWhere(fn ($c) => $c->getName() === 'aior_ref' && $c->getValue() !== '');
 

@@ -152,6 +152,8 @@
            onclick="window.aioDrawer && window.aioDrawer.close()">Reward History</a>
         <a href="{{ route('ambassador.payout-settings') }}" data-testid="drawer-nav-payout-settings"
            onclick="window.aioDrawer && window.aioDrawer.close()">Payout Settings</a>
+        <a href="{{ route('ambassador.account-credit') }}" data-testid="drawer-nav-account-credit"
+           onclick="window.aioDrawer && window.aioDrawer.close()">Account Credit</a>
         <a href="{{ route('ambassador.security') }}" data-testid="drawer-nav-security"
            onclick="window.aioDrawer && window.aioDrawer.close()">Account Security</a>
         @if (auth()->user()?->hasAnyRole(\App\Enums\Role::panelRoles()))
@@ -176,6 +178,7 @@
             <a href="{{ route('ambassador.referrals') }}" data-testid="nav-referrals">My Referrals</a>
             <a href="{{ route('ambassador.rewards.history') }}" data-testid="nav-history">Reward History</a>
             <a href="{{ route('ambassador.payout-settings') }}" data-testid="nav-payout-settings">Payout Settings</a>
+            <a href="{{ route('ambassador.account-credit') }}" data-testid="nav-account-credit">Account Credit</a>
             <a href="{{ route('ambassador.security') }}" data-testid="nav-security">Account Security</a>
             @if (auth()->user()?->hasAnyRole(\App\Enums\Role::panelRoles()))
                 <a href="/admin" data-testid="nav-admin-access" style="color:#fef3c7">Admin Access</a>

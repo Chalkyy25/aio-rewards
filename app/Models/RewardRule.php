@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Database\Factories\RewardRuleFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -23,13 +24,23 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class RewardRule extends Model
 {
-    /** @use HasFactory<\Database\Factories\RewardRuleFactory> */
+    /** @use HasFactory<RewardRuleFactory> */
     use HasFactory;
 
     protected $fillable = [
         'name', 'kind', 'trigger_count', 'amount_minor', 'currency',
         'percentage_bps', 'is_active', 'sort_order',
     ];
+
+    protected static function booted(): void
+    {
+        // Launch guard: legacy every_n_cash must never become active again.
+        static::saving(function (RewardRule $rule): void {
+            if ($rule->kind === 'every_n_cash') {
+                $rule->is_active = false;
+            }
+        });
+    }
 
     protected function casts(): array
     {

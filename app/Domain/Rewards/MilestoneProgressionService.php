@@ -10,6 +10,7 @@ use App\Models\Reward;
 use App\Models\RewardMilestoneTier;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
@@ -95,7 +96,7 @@ class MilestoneProgressionService
     /**
      * Claim a specific tier. Idempotent and concurrency-safe.
      *
-     * @throws MilestoneClaimUnavailableException  when the tier is no longer available.
+     * @throws MilestoneClaimUnavailableException when the tier is no longer available.
      */
     public function claim(
         AmbassadorProfile $profile,
@@ -210,21 +211,31 @@ class MilestoneProgressionService
      */
     public function rejectAndRelease(Reward $reward, User $actor, string $note): bool
     {
-        if (! in_array($reward->status, ['pending_approval', 'approved'], true)) {
-            return false;
-        }
-
         return (bool) DB::transaction(function () use ($reward, $actor, $note) {
-            $reward->update([
-                'status' => 'rejected',
-                'rejected_at' => now(),
-                'rejected_by_user_id' => $actor->getKey(),
-                'reject_disposition' => 'release',
-                'note' => $note,
-            ]);
+            /** @var Reward|null $locked */
+            $locked = Reward::query()->whereKey($reward->id)->lockForUpdate()->first();
+            if (! $locked || ! in_array($locked->status, ['pending_approval', 'approved'], true)) {
+                return false;
+            }
+
+            $updated = Reward::query()
+                ->whereKey($locked->id)
+                ->whereIn('status', ['pending_approval', 'approved'])
+                ->update([
+                    'status' => 'rejected',
+                    'rejected_at' => now(),
+                    'rejected_by_user_id' => $actor->getKey(),
+                    'reject_disposition' => 'release',
+                    'note' => $note,
+                    'updated_at' => now(),
+                ]);
+
+            if ($updated !== 1) {
+                return false;
+            }
 
             ReferralAllocation::query()
-                ->where('reward_id', $reward->id)
+                ->where('reward_id', $locked->id)
                 ->whereNotNull('active_marker')
                 ->update([
                     'active_marker' => null,
@@ -233,10 +244,10 @@ class MilestoneProgressionService
                     'updated_at' => now(),
                 ]);
 
-            AuditLogger::record('reward.rejected_released', $reward, actor: $actor, after: ['note' => $note]);
+            AuditLogger::record('reward.rejected_released', $locked->fresh(), actor: $actor, after: ['note' => $note]);
 
             return true;
-        });
+        }, attempts: 3);
     }
 
     /**
@@ -245,27 +256,40 @@ class MilestoneProgressionService
      */
     public function rejectAndConsume(Reward $reward, User $actor, string $note): bool
     {
-        if (! in_array($reward->status, ['pending_approval', 'approved'], true)) {
-            return false;
-        }
+        return (bool) DB::transaction(function () use ($reward, $actor, $note) {
+            /** @var Reward|null $locked */
+            $locked = Reward::query()->whereKey($reward->id)->lockForUpdate()->first();
+            if (! $locked || ! in_array($locked->status, ['pending_approval', 'approved'], true)) {
+                return false;
+            }
 
-        $reward->update([
-            'status' => 'rejected',
-            'rejected_at' => now(),
-            'rejected_by_user_id' => $actor->getKey(),
-            'reject_disposition' => 'consume',
-            'note' => $note,
-        ]);
-        AuditLogger::record('reward.rejected_consumed', $reward, actor: $actor, after: ['note' => $note]);
+            $updated = Reward::query()
+                ->whereKey($locked->id)
+                ->whereIn('status', ['pending_approval', 'approved'])
+                ->update([
+                    'status' => 'rejected',
+                    'rejected_at' => now(),
+                    'rejected_by_user_id' => $actor->getKey(),
+                    'reject_disposition' => 'consume',
+                    'note' => $note,
+                    'updated_at' => now(),
+                ]);
 
-        return true;
+            if ($updated !== 1) {
+                return false;
+            }
+
+            AuditLogger::record('reward.rejected_consumed', $locked->fresh(), actor: $actor, after: ['note' => $note]);
+
+            return true;
+        }, attempts: 3);
     }
 
     /**
      * Query builder for referrals that are currently eligible to fund a claim:
      * approved status + not already tied to an active allocation.
      */
-    public function eligibleConversionsQuery(int $profileId): \Illuminate\Database\Eloquent\Builder
+    public function eligibleConversionsQuery(int $profileId): Builder
     {
         return ReferralConversion::query()
             ->where('ambassador_profile_id', $profileId)

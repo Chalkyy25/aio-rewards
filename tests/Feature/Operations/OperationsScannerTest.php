@@ -10,12 +10,12 @@ use App\Enums\OperationsStatus;
 use App\Enums\OperationsType;
 use App\Models\AmbassadorProfile;
 use App\Models\OperationsItem;
-use App\Models\Package;
 use App\Models\Purchase;
 use App\Models\ReferralConversion;
 use App\Models\Reward;
 use App\Models\RewardRule;
 use App\Models\User;
+use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -26,7 +26,7 @@ class OperationsScannerTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->seed(\Database\Seeders\RolesAndPermissionsSeeder::class);
+        $this->seed(RolesAndPermissionsSeeder::class);
     }
 
     public function test_detects_paid_order_awaiting_fulfilment_and_dedupes_on_second_run(): void
@@ -113,7 +113,10 @@ class OperationsScannerTest extends TestCase
 
     public function test_detects_reward_awaiting_and_approved_unpaid(): void
     {
-        settings()->put('ops.reward.approved_unpaid_hours', '1');
+        settings()->putMany([
+            'ops.reward.claim_awaiting_approval_days' => '7',
+            'ops.reward.approved_unpaid_hours' => '1',
+        ]);
         $ambassador = $this->makeAmbassador();
         $rule = RewardRule::create([
             'name' => 'First 5', 'trigger_type' => 'referral_count', 'threshold' => 5,
@@ -123,6 +126,13 @@ class OperationsScannerTest extends TestCase
             'ambassador_profile_id' => $ambassador->id, 'reward_rule_id' => $rule->id, 'milestone_index' => 1,
             'status' => 'pending_approval',
         ]);
+        $pending->forceFill(['created_at' => now()->subDays(8)])->save();
+
+        $freshPending = Reward::factory()->create([
+            'ambassador_profile_id' => $ambassador->id, 'reward_rule_id' => $rule->id, 'milestone_index' => 3,
+            'status' => 'pending_approval',
+        ]);
+
         $approved = Reward::factory()->create([
             'ambassador_profile_id' => $ambassador->id, 'reward_rule_id' => $rule->id, 'milestone_index' => 2,
             'status' => 'approved', 'approved_at' => now()->subHours(3),
@@ -130,8 +140,22 @@ class OperationsScannerTest extends TestCase
 
         app(OperationsScanner::class)->scan();
 
-        $this->assertDatabaseHas('operations_items', ['type' => OperationsType::RewardAwaitingApproval->value, 'subject_id' => $pending->id]);
-        $this->assertDatabaseHas('operations_items', ['type' => OperationsType::RewardApprovedAwaitingPayment->value, 'subject_id' => $approved->id]);
+        $this->assertDatabaseHas('operations_items', [
+            'type' => OperationsType::RewardAwaitingApproval->value,
+            'subject_id' => $pending->id,
+            'dedupe_key' => 'reward-claim-awaiting-approval:'.$pending->id,
+            'priority' => OperationsPriority::Medium->value,
+        ]);
+        $this->assertDatabaseMissing('operations_items', [
+            'type' => OperationsType::RewardAwaitingApproval->value,
+            'subject_id' => $freshPending->id,
+        ]);
+        $this->assertDatabaseHas('operations_items', [
+            'type' => OperationsType::RewardApprovedAwaitingPayment->value,
+            'subject_id' => $approved->id,
+            'dedupe_key' => 'reward-approved-awaiting-payment:'.$approved->id,
+            'priority' => OperationsPriority::High->value,
+        ]);
     }
 
     public function test_provider_verification_failure_becomes_critical_item(): void

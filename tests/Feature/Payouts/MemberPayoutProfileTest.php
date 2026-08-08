@@ -418,7 +418,7 @@ class MemberPayoutProfileTest extends TestCase
         app(OperationsScanner::class)->scan();
 
         $item = OperationsItem::query()
-            ->where('dedupe_key', 'rewards.approved_awaiting_payment:'.$reward->id)
+            ->where('dedupe_key', 'reward-approved-awaiting-payment:'.$reward->id)
             ->first();
         $this->assertNotNull($item);
         $meta = json_encode($item->meta);

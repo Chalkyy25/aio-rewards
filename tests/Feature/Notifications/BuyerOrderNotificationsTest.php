@@ -114,8 +114,13 @@ class BuyerOrderNotificationsTest extends TestCase
             'fulfilment_status' => 'in_progress',
             'buyer_email' => 'buyer@example.com',
         ]);
+        $svc = app(OrderFulfilmentService::class);
+        $svc->updateFulfilmentDetails($purchase, [
+            'provisioned_username' => 'aio_complete_user',
+            'provisioned_password' => 'complete-secret-2026',
+        ]);
 
-        app(OrderFulfilmentService::class)->transition($purchase, OrderStatus::Completed);
+        $svc->transition($purchase->fresh(), OrderStatus::Completed);
 
         Notification::assertSentOnDemand(BuyerOrderCompletedNotification::class);
         $this->assertNotNull($purchase->fresh()->completed_email_sent_at);
@@ -134,8 +139,12 @@ class BuyerOrderNotificationsTest extends TestCase
         ]);
 
         $svc = app(OrderFulfilmentService::class);
-        $svc->transition($purchase, OrderStatus::AwaitingCustomer);
-        $svc->transition($purchase, OrderStatus::Completed);
+        $svc->updateFulfilmentDetails($purchase, [
+            'provisioned_username' => 'aio_complete_user',
+            'provisioned_password' => 'complete-secret-2026',
+        ]);
+        $svc->transition($purchase->fresh(), OrderStatus::AwaitingCustomer);
+        $svc->transition($purchase->fresh(), OrderStatus::Completed);
         // Try to move backwards and forwards again (only refund would be legal from completed; skip forced retry via notifier).
         app(BuyerOrderNotifier::class)->sendOrderCompleted($purchase->fresh());
 

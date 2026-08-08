@@ -299,15 +299,11 @@ class AccountCreditFulfilmentService
 
     private function assertPreferredAccountCredit(Reward $reward): void
     {
-        $profile = $reward->relationLoaded('ambassadorProfile')
-            ? $reward->ambassadorProfile
-            : $reward->ambassadorProfile()->with('payoutProfile')->first();
-
-        $method = $profile?->payoutProfile?->preferred_method;
+        $method = $reward->fulfilmentPayoutMethod();
 
         if ($method !== PayoutMethod::AccountCredit) {
             throw new InvalidArgumentException(
-                'Account Credit fulfilment requires the member preferred payout method to be Account Credit.'
+                'Account Credit fulfilment requires this reward to have been claimed for Account Credit.'
             );
         }
     }

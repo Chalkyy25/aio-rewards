@@ -212,14 +212,14 @@
                 <div class="value-sub">Ready to claim</div>
             </div>
             <div class="card">
-                <h2>Pending reward</h2>
+                <h2 data-testid="reward-pending-label">{{ $stats['pending_claim_headline'] ?? 'Pending reward' }}</h2>
                 <div class="value" data-testid="reward-pending">£{{ number_format($stats['pending_reward_minor'] / 100, 2) }}</div>
-                <div class="value-sub">Awaiting admin approval</div>
+                <div class="value-sub" data-testid="reward-pending-sub">{{ $stats['pending_claim_sub'] ?? 'Awaiting admin approval' }}</div>
             </div>
             <div class="card">
-                <h2>Approved reward</h2>
+                <h2 data-testid="reward-approved-label">{{ $stats['approved_claim_headline'] ?? 'Approved reward' }}</h2>
                 <div class="value" data-testid="reward-approved">£{{ number_format($stats['approved_reward_minor'] / 100, 2) }}</div>
-                <div class="value-sub">Ready for payout</div>
+                <div class="value-sub" data-testid="reward-approved-sub">{{ $stats['approved_claim_sub'] ?? 'Ready for payout' }}</div>
             </div>
             <div class="card">
                 <h2>Paid reward</h2>

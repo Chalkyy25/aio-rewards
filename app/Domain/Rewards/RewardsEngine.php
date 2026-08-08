@@ -120,6 +120,11 @@ class RewardsEngine
      * (or other external method). Does NOT move money and must NOT be used for
      * Account Credit — use AccountCreditFulfilmentService instead.
      *
+     * When preferred_payout_method_snapshot is set it is authoritative:
+     * account_credit snapshots always refuse; bank_transfer snapshots always
+     * record as bank_transfer (explicit overrides cannot change the claim).
+     * Null snapshot retains legacy fallback for historical rewards.
+     *
      * @throws RewardFundingIntegrityException
      */
     public function markPaid(
@@ -136,11 +141,8 @@ class RewardsEngine
                 return false;
             }
 
-            $method = $paymentMethod
-                ?: $locked->ambassadorProfile?->payoutProfile?->preferred_method?->value
-                ?: PayoutMethod::BankTransfer->value;
-
-            if ($method === PayoutMethod::AccountCredit->value) {
+            $method = $this->resolveMarkPaidMethod($locked, $paymentMethod);
+            if ($method === null || $method === PayoutMethod::AccountCredit->value) {
                 // Account Credit must go through the ledger fulfilment path.
                 return false;
             }
@@ -180,6 +182,37 @@ class RewardsEngine
 
             return true;
         }, attempts: 3);
+    }
+
+    /**
+     * Resolve the payment method recorded by markPaid.
+     *
+     * Snapshot (when present) wins over explicit args and live preference.
+     *
+     * @return ?string method value, or null when fulfilment must refuse
+     */
+    private function resolveMarkPaidMethod(Reward $locked, ?string $paymentMethod): ?string
+    {
+        $claimed = $locked->claimedPayoutMethod();
+
+        if ($claimed === PayoutMethod::AccountCredit) {
+            return null;
+        }
+
+        if ($claimed === PayoutMethod::BankTransfer) {
+            // Explicit account_credit (or any other) override cannot change the claim.
+            return PayoutMethod::BankTransfer->value;
+        }
+
+        if ($claimed !== null) {
+            // Other snapshotted non-AC methods (e.g. legacy paypal) are fixed at claim.
+            return $claimed->value;
+        }
+
+        // Historical NULL snapshot: legacy fallback only.
+        return $paymentMethod
+            ?: $locked->ambassadorProfile?->payoutProfile?->preferred_method?->value
+            ?: PayoutMethod::BankTransfer->value;
     }
 
     /**

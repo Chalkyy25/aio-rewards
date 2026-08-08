@@ -8,6 +8,7 @@ use App\Domain\Rewards\MilestoneProgressionService;
 use App\Domain\Rewards\MilestoneUnlockNotifier;
 use App\Domain\Settings\SettingsRepository;
 use App\Models\AmbassadorProfile;
+use App\Models\MemberPayoutProfile;
 use App\Models\MilestoneUnlockNotification;
 use App\Models\Package;
 use App\Models\Purchase;
@@ -40,6 +41,7 @@ class MilestoneUnlockNotificationTest extends TestCase
         $this->profile = AmbassadorProfile::factory()->for($this->user)->create([
             'flagged_for_review' => false,
         ]);
+        MemberPayoutProfile::factory()->forProfile($this->profile)->accountCredit()->create();
     }
 
     private function approveConversions(int $n): void

@@ -42,6 +42,7 @@ class RewardFundingIntegrityTest extends TestCase
         $this->member = User::factory()->create(['is_active' => true, 'email_verified_at' => now()]);
         $this->member->assignRole(Role::Ambassador->value);
         $this->profile = AmbassadorProfile::factory()->for($this->member)->create(['flagged_for_review' => false]);
+        MemberPayoutProfile::factory()->forProfile($this->profile)->accountCredit()->create();
         $this->admin = User::factory()->create(['is_active' => true]);
         $this->admin->assignRole(Role::Admin->value);
     }
@@ -122,6 +123,7 @@ class RewardFundingIntegrityTest extends TestCase
 
     public function test_refund_after_bank_transfer_paid_flags_for_review_without_erasing_payment(): void
     {
+        MemberPayoutProfile::query()->where('ambassador_profile_id', $this->profile->id)->delete();
         MemberPayoutProfile::factory()->forProfile($this->profile)->bankTransfer()->create();
         $reward = $this->claimPending();
         app(RewardsEngine::class)->approve($reward, $this->admin);
@@ -150,9 +152,7 @@ class RewardFundingIntegrityTest extends TestCase
 
     public function test_chargeback_after_account_credit_paid_flags_without_auto_debit(): void
     {
-        MemberPayoutProfile::factory()->forProfile($this->profile)->create([
-            'preferred_method' => PayoutMethod::AccountCredit,
-        ]);
+        // setUp already configures Account Credit preference.
         $reward = $this->claimPending();
         app(RewardsEngine::class)->approve($reward, $this->admin);
         app(AccountCreditFulfilmentService::class)->apply($reward->fresh(), $this->admin);

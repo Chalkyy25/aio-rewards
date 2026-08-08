@@ -4,6 +4,7 @@ namespace Tests\Feature\Rewards;
 
 use App\Domain\Referrals\ConversionService;
 use App\Models\AmbassadorProfile;
+use App\Models\MemberPayoutProfile;
 use App\Models\Package;
 use App\Models\Purchase;
 use App\Models\ReferralConversion;
@@ -35,6 +36,7 @@ class MemberMilestonePagesTest extends TestCase
         $this->seed(RolesAndPermissionsSeeder::class);
         $this->user = User::factory()->create(['is_active' => true, 'email_verified_at' => now()]);
         $this->profile = AmbassadorProfile::factory()->for($this->user)->create();
+        MemberPayoutProfile::factory()->forProfile($this->profile)->accountCredit()->create();
     }
 
     private function approveConversions(int $n): void

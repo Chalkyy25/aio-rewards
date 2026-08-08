@@ -275,16 +275,31 @@ class AccountCreditFulfilmentTest extends TestCase
         $this->assertSame($tx->id, $reward->fresh()->account_credit_transaction_id);
     }
 
-    public function test_apply_requires_account_credit_payout_preference(): void
+    public function test_apply_requires_account_credit_claim_snapshot(): void
     {
         MemberPayoutProfile::query()->where('ambassador_profile_id', $this->profile->id)->delete();
         MemberPayoutProfile::factory()->forProfile($this->profile)->bankTransfer()->create();
 
         $reward = $this->approvedMilestoneReward();
+        $this->assertSame(PayoutMethod::BankTransfer, $reward->preferred_payout_method_snapshot);
 
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('Account Credit fulfilment requires the member preferred payout method to be Account Credit.');
+        $this->expectExceptionMessage('Account Credit fulfilment requires this reward to have been claimed for Account Credit.');
         app(AccountCreditFulfilmentService::class)->apply($reward, $this->admin);
+    }
+
+    public function test_apply_uses_claim_snapshot_not_live_preference(): void
+    {
+        $reward = $this->approvedMilestoneReward();
+        $this->assertSame(PayoutMethod::AccountCredit, $reward->preferred_payout_method_snapshot);
+
+        // Member later switches preference to bank — claim must stay Account Credit.
+        MemberPayoutProfile::query()->where('ambassador_profile_id', $this->profile->id)->delete();
+        MemberPayoutProfile::factory()->forProfile($this->profile)->bankTransfer()->create();
+
+        $this->assertTrue(app(AccountCreditFulfilmentService::class)->apply($reward->fresh(), $this->admin));
+        $this->assertSame('paid', $reward->fresh()->status);
+        $this->assertSame(PayoutMethod::AccountCredit->value, $reward->fresh()->payment_method);
     }
 
     public function test_apply_succeeds_when_preference_is_account_credit(): void

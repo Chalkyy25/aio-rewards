@@ -81,8 +81,13 @@ class RewardTransitionSemanticsTest extends TestCase
 
     public function test_approved_unpaid_uses_reject_not_reverse(): void
     {
+        MemberPayoutProfile::query()->where('ambassador_profile_id', $this->profile->id)->delete();
+        MemberPayoutProfile::factory()->forProfile($this->profile)->bankTransfer()->create();
+
         $reward = $this->claim();
+        $this->assertSame(PayoutMethod::BankTransfer, $reward->preferred_payout_method_snapshot);
         app(RewardsEngine::class)->approve($reward, $this->member);
+        $this->assertSame('approved', $reward->fresh()->status);
 
         $this->assertFalse(app(RewardsEngine::class)->reverse($reward->fresh()));
         $this->assertTrue(app(MilestoneProgressionService::class)->rejectAndConsume($reward->fresh(), $this->member, 'abuse'));

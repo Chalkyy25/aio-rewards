@@ -15,7 +15,6 @@ use App\Models\AmbassadorProfile;
 use App\Models\MemberPayoutProfile;
 use App\Models\Package;
 use App\Models\Purchase;
-use App\Models\ReferralAllocation;
 use App\Models\ReferralConversion;
 use App\Models\Reward;
 use App\Models\RewardMilestoneTier;
@@ -83,12 +82,34 @@ class AccountCreditFulfilmentTest extends TestCase
         }
     }
 
+    /**
+     * Claim + approve. Account Credit snapshots are auto-fulfilled to paid.
+     */
     private function approvedMilestoneReward(int $threshold = 5): Reward
     {
         $this->approveConversions($threshold);
         $tier = RewardMilestoneTier::query()->where('threshold', $threshold)->firstOrFail();
         $reward = app(MilestoneProgressionService::class)->claim($this->profile, $tier, $this->member);
         $this->assertTrue(app(RewardsEngine::class)->approve($reward, $this->admin));
+
+        return $reward->fresh();
+    }
+
+    /**
+     * Claim as Account Credit then force approved without fulfilment — for apply()/repair tests.
+     */
+    private function forceApprovedAccountCreditReward(int $threshold = 5): Reward
+    {
+        $this->approveConversions($threshold);
+        $tier = RewardMilestoneTier::query()->where('threshold', $threshold)->firstOrFail();
+        $reward = app(MilestoneProgressionService::class)->claim($this->profile, $tier, $this->member);
+        $this->assertSame(PayoutMethod::AccountCredit, $reward->preferred_payout_method_snapshot);
+
+        $reward->update([
+            'status' => 'approved',
+            'approved_at' => now(),
+            'approved_by_user_id' => $this->admin->id,
+        ]);
 
         return $reward->fresh();
     }
@@ -136,7 +157,7 @@ class AccountCreditFulfilmentTest extends TestCase
 
     public function test_failed_credit_does_not_mark_reward_paid(): void
     {
-        $reward = $this->approvedMilestoneReward();
+        $reward = $this->forceApprovedAccountCreditReward();
 
         $reward->update([
             'funding_compromised_at' => now(),
@@ -157,16 +178,6 @@ class AccountCreditFulfilmentTest extends TestCase
 
     public function test_invalidly_funded_reward_cannot_credit(): void
     {
-        $reward = $this->approvedMilestoneReward();
-
-        $allocation = ReferralAllocation::query()->where('reward_id', $reward->id)->whereNotNull('active_marker')->firstOrFail();
-        $conversion = $allocation->conversion;
-        $conversion->purchase->update(['status' => 'refunded']);
-        app(ConversionService::class)->reverse($conversion, 'refund');
-
-        $reward->refresh();
-        $this->assertSame('rejected', $reward->status);
-
         $bad = Reward::factory()->create([
             'ambassador_profile_id' => $this->profile->id,
             'origin' => 'milestone_claim',
@@ -174,6 +185,7 @@ class AccountCreditFulfilmentTest extends TestCase
             'approved_at' => now(),
             'amount_minor' => 5000,
             'account_credit_bonus_minor_snapshot' => 1000,
+            'preferred_payout_method_snapshot' => PayoutMethod::AccountCredit,
             'currency' => 'gbp',
             'milestone_index' => 5,
             'tier_snapshot' => ['threshold' => 5],
@@ -239,7 +251,7 @@ class AccountCreditFulfilmentTest extends TestCase
 
     public function test_orphaned_credit_is_repaired_including_missing_bonus_and_bank_mark_paid_blocked(): void
     {
-        $reward = $this->approvedMilestoneReward();
+        $reward = $this->forceApprovedAccountCreditReward();
 
         // Incomplete fulfilment: base ledger credit exists, bonus missing, reward still approved.
         $tx = app(AccountCreditLedger::class)->creditRewardFulfilment(

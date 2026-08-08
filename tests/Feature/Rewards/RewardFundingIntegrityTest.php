@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Rewards;
 
-use App\Domain\Credits\AccountCreditFulfilmentService;
 use App\Domain\Credits\AccountCreditLedger;
 use App\Domain\Referrals\ConversionService;
 use App\Domain\Rewards\MilestoneProgressionService;
@@ -109,8 +108,12 @@ class RewardFundingIntegrityTest extends TestCase
 
     public function test_refund_invalidates_approved_unpaid_reward(): void
     {
+        MemberPayoutProfile::query()->where('ambassador_profile_id', $this->profile->id)->delete();
+        MemberPayoutProfile::factory()->forProfile($this->profile)->bankTransfer()->create();
+
         $reward = $this->claimPending();
         app(RewardsEngine::class)->approve($reward, $this->admin);
+        $this->assertSame('approved', $reward->fresh()->status);
 
         $allocation = ReferralAllocation::query()->where('reward_id', $reward->id)->whereNotNull('active_marker')->firstOrFail();
         $conversion = $allocation->conversion;
@@ -152,11 +155,11 @@ class RewardFundingIntegrityTest extends TestCase
 
     public function test_chargeback_after_account_credit_paid_flags_without_auto_debit(): void
     {
-        // setUp already configures Account Credit preference.
+        // setUp already configures Account Credit preference; Approve auto-fulfils.
         $reward = $this->claimPending();
         app(RewardsEngine::class)->approve($reward, $this->admin);
-        app(AccountCreditFulfilmentService::class)->apply($reward->fresh(), $this->admin);
 
+        $this->assertSame('paid', $reward->fresh()->status);
         $this->assertSame(6000, app(AccountCreditLedger::class)->balanceMinor($this->profile));
 
         $allocation = ReferralAllocation::query()->where('reward_id', $reward->id)->whereNotNull('active_marker')->firstOrFail();

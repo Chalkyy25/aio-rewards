@@ -130,7 +130,9 @@ final class RevealPayoutDetailsActionFactory
             ->action(function (): void {
                 app(RevealedPayoutDetailsStore::class)->clear();
             })
-            ->cancelParentActions()
-            ->hidden();
+            // Only visible while a successful reveal is waiting to be shown.
+            // Using hidden() would also disable mounting (Filament treats hidden
+            // actions as disabled), which breaks the reveal → modal chain.
+            ->visible(fn (): bool => app(RevealedPayoutDetailsStore::class)->peek() !== null);
     }
 }

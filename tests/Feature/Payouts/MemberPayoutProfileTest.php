@@ -396,7 +396,7 @@ class MemberPayoutProfileTest extends TestCase
                 'reason' => 'Manual bank transfer for approved reward',
                 'password' => self::PASSWORD,
             ])
-            ->assertMountedAction(RevealPayoutDetailsActionFactory::SHOW_ACTION)
+            ->assertActionMounted(RevealPayoutDetailsActionFactory::SHOW_ACTION)
             ->assertMountedActionModalSee(['12345678', '12-34-56', 'Alex Example']);
 
         $audit = AuditLog::query()->where('action', 'payout_profile.details_revealed')->latest('id')->first();

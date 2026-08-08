@@ -428,7 +428,8 @@ class MemberPayoutProfileTest extends TestCase
 
         $this->get(RewardResource::getUrl('view', ['record' => $reward]))
             ->assertOk()
-            ->assertSeeText('Claimed payout method')
+            ->assertSeeText('Payout Method')
+            ->assertSeeText('Legacy / Not snapshotted')
             ->assertSeeText('Current member preference')
             ->assertSeeText('Bank Transfer')
             ->assertSeeText('Destination configured')

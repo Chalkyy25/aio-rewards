@@ -130,6 +130,42 @@ class Reward extends Model
     }
 
     /**
+     * Admin-facing claim method label. Never invents a method for null snapshots.
+     */
+    public function adminClaimedPayoutMethodLabel(): string
+    {
+        return match ($this->claimedPayoutMethod()) {
+            PayoutMethod::AccountCredit => 'Account Credit',
+            PayoutMethod::BankTransfer => 'Bank Transfer',
+            PayoutMethod::PayPal => 'PayPal',
+            default => 'Legacy / Not snapshotted',
+        };
+    }
+
+    public function adminClaimedPayoutMethodColor(): string
+    {
+        return match ($this->claimedPayoutMethod()) {
+            PayoutMethod::AccountCredit => 'success',
+            PayoutMethod::BankTransfer => 'info',
+            PayoutMethod::PayPal => 'gray',
+            default => 'warning',
+        };
+    }
+
+    /** Payable total shown to admins (AC total when claimed as AC; cash otherwise). */
+    public function adminPayableAmountFormatted(): string
+    {
+        return $this->memberFacingAmountFormatted();
+    }
+
+    public function adminPayableTotalLabel(): string
+    {
+        return $this->claimedAsAccountCredit()
+            ? 'Account Credit Total'
+            : 'Payable Total';
+    }
+
+    /**
      * Admin fulfilment routing for this reward.
      * Prefer the claim snapshot; only fall back to live preference for
      * legacy rows where the snapshot was never captured.

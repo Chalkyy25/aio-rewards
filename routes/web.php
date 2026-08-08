@@ -1,11 +1,14 @@
 <?php
 
+use App\Http\Controllers\AccountCreditController;
+use App\Http\Controllers\AmbassadorDashboardController;
 use App\Http\Controllers\Auth\EmailVerificationController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\LogoutController;
 use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
-use App\Http\Controllers\AmbassadorDashboardController;
+use App\Http\Controllers\Auth\PostLoginChooserController;
+use App\Http\Controllers\Auth\TwoFactorChallengeController;
 use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\MilestonesController;
 use App\Http\Controllers\MyReferralsController;
@@ -14,6 +17,8 @@ use App\Http\Controllers\ReferralClickController;
 use App\Http\Controllers\RewardHistoryController;
 use App\Http\Controllers\StripeWebhookController;
 use App\Livewire\AmbassadorActivation;
+use App\Livewire\AmbassadorPayoutSettings;
+use App\Livewire\AmbassadorSecurity;
 use App\Models\Package;
 use Illuminate\Support\Facades\Route;
 
@@ -68,14 +73,14 @@ Route::middleware('guest')->group(function () {
     Route::get('/reset-password/{token}', [NewPasswordController::class, 'show'])->name('password.reset');
     Route::post('/reset-password', [NewPasswordController::class, 'store'])->middleware('throttle:5,1')->name('password.update');
 
-    Route::get('/login/2fa', [\App\Http\Controllers\Auth\TwoFactorChallengeController::class, 'show'])->name('login.challenge');
-    Route::post('/login/2fa', [\App\Http\Controllers\Auth\TwoFactorChallengeController::class, 'verify'])
+    Route::get('/login/2fa', [TwoFactorChallengeController::class, 'show'])->name('login.challenge');
+    Route::post('/login/2fa', [TwoFactorChallengeController::class, 'verify'])
         ->middleware('throttle:10,1')->name('login.challenge.submit');
 });
 
 Route::post('/logout', LogoutController::class)->middleware('auth')->name('logout');
 
-Route::get('/post-login', [\App\Http\Controllers\Auth\PostLoginChooserController::class, 'show'])
+Route::get('/post-login', [PostLoginChooserController::class, 'show'])
     ->middleware('auth')
     ->name('post-login.choose');
 
@@ -100,6 +105,7 @@ Route::middleware(['auth', 'verified'])->prefix('ambassador')->name('ambassador.
         ->name('milestones.claim');
     Route::get('/rewards/history', [RewardHistoryController::class, 'show'])->name('rewards.history');
     Route::get('/referrals', [MyReferralsController::class, 'show'])->name('referrals');
-    Route::get('/security', \App\Livewire\AmbassadorSecurity::class)->name('security');
-    Route::get('/payout-settings', \App\Livewire\AmbassadorPayoutSettings::class)->name('payout-settings');
+    Route::get('/payout-settings', AmbassadorPayoutSettings::class)->name('payout-settings');
+    Route::get('/account-credit', [AccountCreditController::class, 'show'])->name('account-credit');
+    Route::get('/security', AmbassadorSecurity::class)->name('security');
 });

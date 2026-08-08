@@ -2,18 +2,21 @@
 
 namespace App\Http\Controllers;
 
+use App\Domain\Referrals\AttributionCookie;
 use App\Domain\Referrals\DTOs\AttributionContext;
 use App\Domain\Referrals\Services\ClickTracker;
 use App\Models\AmbassadorProfile;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\RateLimiter;
 
 class ReferralClickController extends Controller
 {
-    public function __construct(private readonly ClickTracker $tracker) {}
+    public function __construct(
+        private readonly ClickTracker $tracker,
+        private readonly AttributionCookie $attributionCookie,
+    ) {}
 
     public function __invoke(Request $request, string $code): Response|RedirectResponse
     {
@@ -64,49 +67,14 @@ class ReferralClickController extends Controller
 
         // First-touch attribution: only set the cookie if a valid one isn't
         // already present. Cookie is encrypted by Laravel's cookie middleware.
-        if (! $this->hasValidAttributionCookie($request)) {
-            $cookieName = (string) config('referrals.cookie.name', 'aior_ref');
-            $days = (int) config('referrals.cookie.days', 30);
-            $payload = json_encode([
-                'v' => 1,
-                'code' => $code,
-                'attribution_id' => $click->attribution_id,
-                'set_at' => now()->toIso8601String(),
-            ], JSON_THROW_ON_ERROR);
-
-            $redirect->cookie(Cookie::make(
-                name: $cookieName,
-                value: $payload,
-                minutes: $days * 24 * 60,
-                path: '/',
-                secure: $request->isSecure(),
-                httpOnly: true,
-                sameSite: 'Lax',
+        if (! $this->attributionCookie->hasValid($request)) {
+            $redirect->cookie($this->attributionCookie->make(
+                code: $code,
+                attributionId: $click->attribution_id,
             ));
         }
 
         return $redirect;
-    }
-
-    private function hasValidAttributionCookie(Request $request): bool
-    {
-        $name = (string) config('referrals.cookie.name', 'aior_ref');
-        $raw = $request->cookie($name);
-
-        if (! is_string($raw) || $raw === '') {
-            return false;
-        }
-
-        // Laravel's cookie middleware has already decrypted the payload for us.
-        try {
-            $payload = json_decode($raw, true, flags: JSON_THROW_ON_ERROR);
-        } catch (\Throwable) {
-            return false;
-        }
-
-        return is_array($payload)
-            && ! empty($payload['code'])
-            && ! empty($payload['attribution_id']);
     }
 
     private function trim(mixed $value): ?string

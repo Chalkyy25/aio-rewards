@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\PayoutMethod;
 use Database\Factories\RewardFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -41,6 +42,8 @@ class Reward extends Model
         'tier_snapshot', 'idempotency_key', 'reject_disposition',
         'amount_minor', 'currency', 'status', 'note',
         'payment_method', 'payment_reference',
+        'funding_compromised_at', 'funding_compromise_reason', 'funding_compromise_conversion_id',
+        'account_credit_transaction_id',
         'approved_by_user_id', 'paid_by_user_id', 'rejected_by_user_id', 'reversed_by_user_id',
         'approved_at', 'paid_at', 'rejected_at', 'reversed_at',
     ];
@@ -56,6 +59,7 @@ class Reward extends Model
             'paid_at' => 'datetime',
             'rejected_at' => 'datetime',
             'reversed_at' => 'datetime',
+            'funding_compromised_at' => 'datetime',
         ];
     }
 
@@ -111,6 +115,23 @@ class Reward extends Model
     public function reversedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'reversed_by_user_id');
+    }
+
+    /** @return BelongsTo<AccountCreditTransaction, $this> */
+    public function accountCreditTransaction(): BelongsTo
+    {
+        return $this->belongsTo(AccountCreditTransaction::class, 'account_credit_transaction_id');
+    }
+
+    public function prefersAccountCredit(): bool
+    {
+        return $this->ambassadorProfile?->payoutProfile?->preferred_method
+            === PayoutMethod::AccountCredit;
+    }
+
+    public function isFundingCompromised(): bool
+    {
+        return $this->funding_compromised_at !== null;
     }
 
     public function amountFormatted(): string

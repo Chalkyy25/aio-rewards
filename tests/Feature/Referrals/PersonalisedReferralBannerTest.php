@@ -4,6 +4,7 @@ namespace Tests\Feature\Referrals;
 
 use App\Models\AmbassadorProfile;
 use App\Models\Package;
+use App\Models\ReferralClick;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -22,12 +23,22 @@ class PersonalisedReferralBannerTest extends TestCase
     public function test_landing_page_personalises_banner_when_ambassador_is_known(): void
     {
         $u = User::factory()->create(['name' => 'Alice Ambassador']);
-        AmbassadorProfile::factory()->for($u)->create(['referral_code' => 'ALICE1']);
+        $profile = AmbassadorProfile::factory()->for($u)->create(['referral_code' => 'ALICE1']);
+        $click = ReferralClick::factory()->create([
+            'ambassador_profile_id' => $profile->id,
+            'referral_code_snapshot' => 'ALICE1',
+            'attribution_id' => 'atr-alice-1',
+        ]);
 
-        $ref = json_encode(['code' => 'ALICE1', 'attribution_id' => 'atr']);
+        $ref = json_encode([
+            'v' => 1,
+            'code' => 'ALICE1',
+            'attribution_id' => $click->attribution_id,
+            'set_at' => now()->toIso8601String(),
+        ]);
         $cookie = config('referrals.cookie.name', 'aior_ref');
 
-        $this->withUnencryptedCookie($cookie, $ref)
+        $this->withCookie($cookie, $ref)
             ->get('/')
             ->assertOk()
             ->assertSee('You were referred by')
@@ -37,10 +48,10 @@ class PersonalisedReferralBannerTest extends TestCase
 
     public function test_landing_page_falls_back_to_generic_banner_when_code_is_unknown(): void
     {
-        $ref = json_encode(['code' => 'NOSUCH', 'attribution_id' => 'atr']);
+        $ref = json_encode(['code' => 'NOSUCH', 'attribution_id' => 'atr', 'set_at' => now()->toIso8601String()]);
         $cookie = config('referrals.cookie.name', 'aior_ref');
 
-        $this->withUnencryptedCookie($cookie, $ref)
+        $this->withCookie($cookie, $ref)
             ->get('/')
             ->assertOk()
             ->assertSee('You were referred by an AIO Rewards member.')
@@ -57,13 +68,23 @@ class PersonalisedReferralBannerTest extends TestCase
     public function test_checkout_review_page_names_the_ambassador(): void
     {
         $u = User::factory()->create(['name' => 'Bob Ambassador']);
-        AmbassadorProfile::factory()->for($u)->create(['referral_code' => 'BOB1']);
+        $profile = AmbassadorProfile::factory()->for($u)->create(['referral_code' => 'BOB1']);
+        $click = ReferralClick::factory()->create([
+            'ambassador_profile_id' => $profile->id,
+            'referral_code_snapshot' => 'BOB1',
+            'attribution_id' => 'atr-bob-1',
+        ]);
         $package = Package::factory()->create(['slug' => 'test-pkg', 'is_active' => true]);
 
-        $ref = json_encode(['code' => 'BOB1', 'attribution_id' => 'atr']);
+        $ref = json_encode([
+            'v' => 1,
+            'code' => 'BOB1',
+            'attribution_id' => $click->attribution_id,
+            'set_at' => now()->toIso8601String(),
+        ]);
         $cookie = config('referrals.cookie.name', 'aior_ref');
 
-        $this->withUnencryptedCookie($cookie, $ref)
+        $this->withCookie($cookie, $ref)
             ->withSession(['checkout.details' => [
                 'package_slug' => 'test-pkg',
                 'buyer_name' => 'Buyer', 'buyer_email' => 'b@example.com',

@@ -6,6 +6,7 @@ use Database\Factories\AmbassadorProfileFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
@@ -59,20 +60,20 @@ class AmbassadorProfile extends Model
         return $this->belongsTo(User::class);
     }
 
-    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<Reward, $this> */
-    public function rewards(): \Illuminate\Database\Eloquent\Relations\HasMany
+    /** @return HasMany<Reward, $this> */
+    public function rewards(): HasMany
     {
         return $this->hasMany(Reward::class);
     }
 
-    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<ReferralConversion, $this> */
-    public function referralConversions(): \Illuminate\Database\Eloquent\Relations\HasMany
+    /** @return HasMany<ReferralConversion, $this> */
+    public function referralConversions(): HasMany
     {
         return $this->hasMany(ReferralConversion::class);
     }
 
-    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<ReferralAllocation, $this> */
-    public function allocations(): \Illuminate\Database\Eloquent\Relations\HasMany
+    /** @return HasMany<ReferralAllocation, $this> */
+    public function allocations(): HasMany
     {
         return $this->hasMany(ReferralAllocation::class);
     }
@@ -81,6 +82,18 @@ class AmbassadorProfile extends Model
     public function payoutProfile(): HasOne
     {
         return $this->hasOne(MemberPayoutProfile::class);
+    }
+
+    /** @return HasOne<AccountCreditBalance, $this> */
+    public function accountCreditBalance(): HasOne
+    {
+        return $this->hasOne(AccountCreditBalance::class);
+    }
+
+    /** @return HasMany<AccountCreditTransaction, $this> */
+    public function accountCreditTransactions(): HasMany
+    {
+        return $this->hasMany(AccountCreditTransaction::class);
     }
 
     public function referralUrl(): string

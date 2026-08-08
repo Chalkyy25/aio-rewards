@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\RewardResource\Pages;
 
+use App\Filament\Actions\ApplyAccountCreditActionFactory;
 use App\Filament\Actions\MarkRewardPaidActionFactory;
 use App\Filament\Actions\RevealPayoutDetailsActionFactory;
 use App\Filament\Resources\RewardResource;
@@ -32,11 +33,12 @@ class ViewReward extends ViewRecord
                     /** @var Reward $record */
                     $record = $this->getRecord();
 
-                    // Only while the reward is approved / awaiting payment.
-                    return $record->status === 'approved';
+                    // Only while awaiting bank-transfer payment (not Account Credit).
+                    return $record->status === 'approved' && ! $record->prefersAccountCredit();
                 },
             ),
             MarkRewardPaidActionFactory::make(),
+            ApplyAccountCreditActionFactory::make(),
             RevealPayoutDetailsActionFactory::showModal(),
         ];
     }

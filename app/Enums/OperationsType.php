@@ -23,6 +23,7 @@ enum OperationsType: string
     case ReferralConversionAwaitingApproval = 'referrals.conversion_awaiting_approval';
     case RewardAwaitingApproval = 'rewards.awaiting_approval';
     case RewardApprovedAwaitingPayment = 'rewards.approved_awaiting_payment';
+    case RewardPaidFundingCompromised = 'rewards.paid_funding_compromised';
 
     // Provider / risk / infra
     case ProviderVerificationFailure = 'provider.verification_failure';
@@ -45,6 +46,7 @@ enum OperationsType: string
             self::ReferralConversionAwaitingApproval => 'Referral conversion awaiting approval',
             self::RewardAwaitingApproval => 'Reward claim awaiting approval',
             self::RewardApprovedAwaitingPayment => 'Approved reward awaiting payment',
+            self::RewardPaidFundingCompromised => 'Paid reward funding compromised (refund/chargeback)',
             self::ProviderVerificationFailure => 'Provider verification failure',
             self::RefundRequest => 'Refund request',
             self::Chargeback => 'Chargeback',
@@ -60,6 +62,7 @@ enum OperationsType: string
             self::Chargeback,
             self::FraudFlag,
             self::ProviderVerificationFailure,
+            self::RewardPaidFundingCompromised,
             self::OrderWaiting60 => OperationsPriority::Critical,
 
             self::RefundRequest,

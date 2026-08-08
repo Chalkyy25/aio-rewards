@@ -3,8 +3,10 @@
 namespace App\Filament\Resources;
 
 use App\Domain\Rewards\MilestoneProgressionService;
+use App\Domain\Rewards\RewardFundingIntegrityException;
 use App\Domain\Rewards\RewardsEngine;
 use App\Enums\PayoutMethod;
+use App\Filament\Actions\ApplyAccountCreditActionFactory;
 use App\Filament\Actions\MarkRewardPaidActionFactory;
 use App\Filament\Resources\RewardResource\Pages;
 use App\Models\ReferralAllocation;
@@ -152,6 +154,19 @@ class RewardResource extends Resource
                     ->formatStateUsing(fn (?string $state) => PayoutMethod::tryFrom((string) $state)?->label() ?? ($state ?: '—'))
                     ->placeholder('—'),
                 TextEntry::make('payment_reference')->label('Payment reference')->placeholder('—'),
+                TextEntry::make('account_credit_transaction_id')
+                    ->label('Account Credit txn')
+                    ->placeholder('—')
+                    ->visible(fn (Reward $r) => $r->payment_method === PayoutMethod::AccountCredit->value),
+                TextEntry::make('funding_compromised_at')
+                    ->label('Funding compromised')
+                    ->dateTime()
+                    ->placeholder('—')
+                    ->visible(fn (Reward $r) => $r->isFundingCompromised()),
+                TextEntry::make('funding_compromise_reason')
+                    ->label('Compromise reason')
+                    ->placeholder('—')
+                    ->visible(fn (Reward $r) => $r->isFundingCompromised()),
                 TextEntry::make('note')->label('Admin note')->placeholder('—'),
             ])->columns(2),
         ]);
@@ -222,8 +237,18 @@ class RewardResource extends Resource
                         ->visible(fn (Reward $r) => $r->status === 'pending_approval')
                         ->requiresConfirmation()
                         ->action(function (Reward $r, RewardsEngine $engine) {
-                            if ($engine->approve($r, Auth::user())) {
-                                Notification::make()->title('Reward approved')->success()->send();
+                            try {
+                                if ($engine->approve($r, Auth::user())) {
+                                    Notification::make()->title('Reward approved')->success()->send();
+                                } else {
+                                    Notification::make()->title('Could not approve')->warning()->send();
+                                }
+                            } catch (RewardFundingIntegrityException $e) {
+                                Notification::make()
+                                    ->title('Cannot approve — funding invalid')
+                                    ->body($e->getMessage())
+                                    ->danger()
+                                    ->send();
                             }
                         }),
                     Action::make('reject')
@@ -253,14 +278,20 @@ class RewardResource extends Resource
                             Notification::make()->title('Reward rejected & cycle consumed')->success()->send();
                         }),
                     MarkRewardPaidActionFactory::make(),
+                    ApplyAccountCreditActionFactory::make(),
                     Action::make('reverse')
                         ->label('Reverse')
                         ->icon('heroicon-o-arrow-uturn-left')->color('danger')
-                        ->visible(fn (Reward $r) => $r->status !== 'reversed')
+                        ->visible(fn (Reward $r) => $r->status === 'paid')
                         ->schema([Textarea::make('note')->maxLength(500)])
+                        ->modalHeading('Reverse paid reward')
+                        ->modalDescription('Only for historically paid rewards. Pending claims use Reject (release/consume). Payment history is retained.')
                         ->action(function (Reward $r, array $data, RewardsEngine $engine) {
-                            $engine->reverse($r, Auth::user(), $data['note'] ?? null);
-                            Notification::make()->title('Reward reversed')->success()->send();
+                            if ($engine->reverse($r, Auth::user(), $data['note'] ?? null)) {
+                                Notification::make()->title('Reward reversed')->success()->send();
+                            } else {
+                                Notification::make()->title('Reverse not available for this status')->warning()->send();
+                            }
                         }),
                 ])
                     ->label('Actions')

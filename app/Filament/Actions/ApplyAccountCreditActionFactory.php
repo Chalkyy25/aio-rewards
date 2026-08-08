@@ -29,9 +29,7 @@ final class ApplyAccountCreditActionFactory
                     return false;
                 }
 
-                $method = $r->ambassadorProfile?->payoutProfile?->preferred_method;
-
-                return $method === PayoutMethod::AccountCredit;
+                return $r->fulfilmentPayoutMethod() === PayoutMethod::AccountCredit;
             })
             ->modalHeading(fn (Reward $r) => 'Apply '.$r->accountCreditTotalFormatted().' Account Credit')
             ->modalDescription(function (Reward $r) {

@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Domain\Rewards\MilestoneClaimUnavailableException;
+use App\Domain\Rewards\MilestoneProgress;
 use App\Domain\Rewards\MilestoneProgressionService;
+use App\Models\ReferralConversion;
 use App\Models\Reward;
 use App\Models\RewardMilestoneTier;
 use Illuminate\Http\RedirectResponse;
@@ -12,9 +14,7 @@ use Illuminate\View\View;
 
 class MilestonesController extends Controller
 {
-    public function __construct(private readonly MilestoneProgressionService $service)
-    {
-    }
+    public function __construct(private readonly MilestoneProgressionService $service) {}
 
     public function show(Request $request): View
     {
@@ -22,13 +22,21 @@ class MilestonesController extends Controller
         $profile = $user->ambassadorProfile;
         abort_unless($profile, 403);
 
+        $profile->loadMissing('payoutProfile');
         $progress = $this->service->progressFor($profile);
         $summary = $this->buildSummary($profile->id, $progress);
+
+        $payout = $profile->payoutProfile;
+        $claimMethod = ($payout && $payout->isConfigured() && $payout->preferred_method->isConfigurable())
+            ? $payout->preferred_method
+            : null;
 
         return view('ambassador.milestones.index', [
             'profile' => $profile,
             'progress' => $progress,
             'summary' => $summary,
+            'claimMethod' => $claimMethod,
+            'canClaim' => $claimMethod !== null,
         ]);
     }
 
@@ -52,23 +60,31 @@ class MilestonesController extends Controller
         return redirect()
             ->route('ambassador.milestones')
             ->with('milestone_claimed', [
-                'amount' => $reward->amountFormatted(),
+                'amount' => $reward->memberFacingAmountFormatted(),
+                'method' => $reward->claimedPayoutMethod()?->value,
                 'reward_id' => $reward->id,
             ]);
     }
 
     /** @return array<string, int> */
-    private function buildSummary(int $profileId, \App\Domain\Rewards\MilestoneProgress $progress): array
+    private function buildSummary(int $profileId, MilestoneProgress $progress): array
     {
-        $totals = Reward::query()
+        $rewards = Reward::query()
             ->where('ambassador_profile_id', $profileId)
-            ->selectRaw('status, SUM(amount_minor) as total')
-            ->groupBy('status')
-            ->pluck('total', 'status');
+            ->get(['status', 'amount_minor', 'account_credit_bonus_minor_snapshot', 'preferred_payout_method_snapshot']);
 
-        $pending = (int) ($totals['pending_approval'] ?? 0);
-        $approved = (int) ($totals['approved'] ?? 0);
-        $paid = (int) ($totals['paid'] ?? 0);
+        $pending = 0;
+        $approved = 0;
+        $paid = 0;
+        foreach ($rewards as $reward) {
+            $display = $reward->memberFacingAmountMinor();
+            match ($reward->status) {
+                'pending_approval' => $pending += $display,
+                'approved' => $approved += $display,
+                'paid' => $paid += $display,
+                default => null,
+            };
+        }
 
         return [
             'lifetime_minor' => $approved + $paid,
@@ -76,7 +92,7 @@ class MilestonesController extends Controller
             'pending_minor' => $pending,
             'approved_pending_payment_minor' => $approved,
             'available_now_minor' => $progress->availableAmountMinor,
-            'approved_referrals' => \App\Models\ReferralConversion::query()
+            'approved_referrals' => ReferralConversion::query()
                 ->where('ambassador_profile_id', $profileId)
                 ->where('status', 'approved')
                 ->count(),

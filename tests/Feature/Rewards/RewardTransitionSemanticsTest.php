@@ -8,6 +8,7 @@ use App\Domain\Rewards\RewardsEngine;
 use App\Enums\PayoutMethod;
 use App\Enums\Role;
 use App\Models\AmbassadorProfile;
+use App\Models\MemberPayoutProfile;
 use App\Models\Package;
 use App\Models\Purchase;
 use App\Models\ReferralAllocation;
@@ -34,6 +35,7 @@ class RewardTransitionSemanticsTest extends TestCase
         $this->member = User::factory()->create(['is_active' => true, 'email_verified_at' => now()]);
         $this->member->assignRole(Role::Ambassador->value);
         $this->profile = AmbassadorProfile::factory()->for($this->member)->create(['flagged_for_review' => false]);
+        MemberPayoutProfile::factory()->forProfile($this->profile)->accountCredit()->create();
     }
 
     private function claim(): Reward

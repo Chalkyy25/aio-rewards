@@ -17,6 +17,7 @@
                     display: grid; grid-template-columns: 1fr auto; gap: .5rem 1rem;
                     align-items: start; }
     .history-card .amt { font-size: 1.35rem; font-weight: 700; color: #0f172a; }
+    .history-card .amt-sub { color: #64748b; font-size: .85rem; margin-top: .15rem; }
     .history-card h3 { margin: 0; font-size: 1rem; color: #0f172a; }
     .history-card .meta { color: #64748b; font-size: .85rem; margin-top: .25rem; }
     .history-card .status { text-align: right; }
@@ -51,15 +52,16 @@
             @foreach ($rewards as $r)
                 @php
                     $statusPill = match ($r->status) {
-                        'pending_approval' => ['pending', 'Awaiting approval'],
-                        'approved' => ['approved', 'Payment pending'],
-                        'paid' => ['paid', 'Paid'],
+                        'pending_approval' => ['pending', $r->memberStatusHeadline()],
+                        'approved' => ['approved', $r->memberStatusHeadline()],
+                        'paid' => ['paid', $r->memberStatusHeadline()],
                         'rejected' => ['rejected', 'Rejected'],
                         'reversed' => ['reversed', 'Reversed'],
                         default => ['rejected', ucfirst($r->status)],
                     };
                     $threshold = $r->tier_snapshot['threshold'] ?? $r->tier?->threshold ?? $r->milestone_index;
                     $title = $r->tier_snapshot['title'] ?? $r->tier?->title ?? 'Milestone reward';
+                    $detail = $r->memberStatusDetail();
                 @endphp
                 <article class="history-card" data-testid="history-card-{{ $r->id }}">
                     <div>
@@ -69,9 +71,17 @@
                             @if ($r->approved_at) · Approved {{ $r->approved_at->format('j M Y') }}@endif
                             @if ($r->paid_at) · Paid {{ $r->paid_at->format('j M Y') }}@endif
                         </div>
+                        @if ($detail)
+                            <div class="amt-sub" data-testid="history-detail-{{ $r->id }}">{{ $detail }}</div>
+                        @endif
                     </div>
                     <div class="status">
-                        <div class="amt" data-testid="history-amount-{{ $r->id }}">{{ $r->amountFormatted() }}</div>
+                        <div class="amt" data-testid="history-amount-{{ $r->id }}">{{ $r->memberFacingAmountFormatted() }}</div>
+                        @if ($r->claimedAsAccountCredit())
+                            <div class="amt-sub">Account Credit</div>
+                        @elseif ($r->claimedAsBankTransfer())
+                            <div class="amt-sub">Bank Transfer</div>
+                        @endif
                         <span class="pill {{ $statusPill[0] }}"
                               data-testid="history-status-{{ $r->id }}">{{ $statusPill[1] }}</span>
                     </div>

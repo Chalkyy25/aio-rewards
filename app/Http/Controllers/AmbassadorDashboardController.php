@@ -7,6 +7,7 @@ use App\Domain\Rewards\MilestoneProgressionService;
 use App\Models\ReferralConversion;
 use App\Models\Reward;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\View\View;
 
 class AmbassadorDashboardController extends Controller
@@ -36,6 +37,11 @@ class AmbassadorDashboardController extends Controller
             'account_credit_balance_minor' => 0,
             'account_credit_available_minor' => 0,
             'account_credit_reserved_minor' => 0,
+            'open_claims' => collect(),
+            'pending_claim_headline' => 'Pending reward',
+            'approved_claim_headline' => 'Approved reward',
+            'pending_claim_sub' => 'Awaiting admin approval',
+            'approved_claim_sub' => 'Ready for payout',
         ];
 
         if ($profile) {
@@ -44,17 +50,48 @@ class AmbassadorDashboardController extends Controller
             $stats['account_credit_available_minor'] = $ledger->availableMinor($profile);
             $stats['account_credit_reserved_minor'] = $ledger->reservedMinor($profile);
 
-            $rewards = Reward::query()
+            $rewardRows = Reward::query()
                 ->where('ambassador_profile_id', $profile->id)
-                ->selectRaw('status, SUM(amount_minor) as total')
-                ->groupBy('status')
-                ->pluck('total', 'status');
+                ->get([
+                    'id',
+                    'status',
+                    'amount_minor',
+                    'account_credit_bonus_minor_snapshot',
+                    'preferred_payout_method_snapshot',
+                    'payment_method',
+                    'currency',
+                ]);
 
-            $stats['pending_reward_minor'] = (int) ($rewards['pending_approval'] ?? 0);
-            $stats['approved_reward_minor'] = (int) ($rewards['approved'] ?? 0);
-            $stats['paid_reward_minor'] = (int) ($rewards['paid'] ?? 0);
+            $pending = 0;
+            $approved = 0;
+            $paid = 0;
+            foreach ($rewardRows as $reward) {
+                $display = $reward->memberFacingAmountMinor();
+                match ($reward->status) {
+                    'pending_approval' => $pending += $display,
+                    'approved' => $approved += $display,
+                    'paid' => $paid += $display,
+                    default => null,
+                };
+            }
+
+            $stats['pending_reward_minor'] = $pending;
+            $stats['approved_reward_minor'] = $approved;
+            $stats['paid_reward_minor'] = $paid;
             $stats['lifetime_earned_minor'] =
                 $stats['approved_reward_minor'] + $stats['paid_reward_minor'];
+
+            $openClaims = $rewardRows
+                ->whereIn('status', ['pending_approval', 'approved'])
+                ->sortByDesc('id')
+                ->values();
+            $stats['open_claims'] = $openClaims;
+            $pendingMeta = $this->aggregateClaimHeadline($openClaims->where('status', 'pending_approval'));
+            $approvedMeta = $this->aggregateClaimHeadline($openClaims->where('status', 'approved'), approved: true);
+            $stats['pending_claim_headline'] = $pendingMeta['headline'];
+            $stats['pending_claim_sub'] = $pendingMeta['sub'];
+            $stats['approved_claim_headline'] = $approvedMeta['headline'];
+            $stats['approved_claim_sub'] = $approvedMeta['sub'];
 
             // Lifetime stat — never resets on cash-out. This is intentionally
             // distinct from `approved_conversions` (which is active-cycle only).
@@ -93,5 +130,47 @@ class AmbassadorDashboardController extends Controller
             'stats' => $stats,
             'needsPayoutDetails' => $needsPayoutDetails,
         ]);
+    }
+
+    /**
+     * @param Collection<int, Reward> $claims
+     * @return array{headline: string, sub: string}
+     */
+    private function aggregateClaimHeadline($claims, bool $approved = false): array
+    {
+        if ($claims->isEmpty()) {
+            return [
+                'headline' => $approved ? 'Approved reward' : 'Pending reward',
+                'sub' => $approved ? 'Ready for payout' : 'Awaiting admin approval',
+            ];
+        }
+
+        $methods = $claims->map(fn (Reward $r) => $r->claimedPayoutMethod()?->value)->unique()->values();
+        $single = $claims->count() === 1 ? $claims->first() : null;
+
+        if ($methods->count() === 1 && $methods->first() === 'account_credit') {
+            $sub = $approved ? 'Ready to be applied' : 'Awaiting admin approval';
+            if ($single && $single->accountCreditBonusMinor() > 0) {
+                $sub = $single->amountFormatted().' reward + '.$single->accountCreditBonusFormatted().' bonus · '.$sub;
+            }
+
+            return [
+                'headline' => $approved ? 'Account Credit ready' : 'Pending Account Credit',
+                'sub' => $sub,
+            ];
+        }
+
+        if ($methods->count() === 1 && $methods->first() === 'bank_transfer') {
+            return [
+                'headline' => $approved ? 'Bank Transfer ready' : 'Pending Bank Transfer',
+                'sub' => $approved ? 'Ready for payout' : 'Awaiting admin approval',
+            ];
+        }
+
+        // Mixed or legacy (null snapshot) — keep generic cash wording.
+        return [
+            'headline' => $approved ? 'Approved reward' : 'Pending reward',
+            'sub' => $approved ? 'Ready for payout' : 'Awaiting admin approval',
+        ];
     }
 }

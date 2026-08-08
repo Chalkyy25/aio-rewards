@@ -3,6 +3,7 @@
 namespace App\Domain\Rewards;
 
 use App\Domain\Rewards\Events\RewardCreated;
+use App\Enums\PayoutMethod;
 use App\Models\AmbassadorProfile;
 use App\Models\ReferralAllocation;
 use App\Models\ReferralConversion;
@@ -111,7 +112,9 @@ class MilestoneProgressionService
             throw new MilestoneClaimUnavailableException('This reward is no longer claimable.');
         }
 
-        return DB::transaction(function () use ($profile, $tier, $actor, $idempotencyKey) {
+        $payoutMethod = $this->requireConfiguredClaimMethod($profile);
+
+        return DB::transaction(function () use ($profile, $tier, $actor, $idempotencyKey, $payoutMethod) {
             // Lock the profile row to serialize concurrent claims by the same member.
             AmbassadorProfile::query()->whereKey($profile->id)->lockForUpdate()->first();
 
@@ -168,6 +171,7 @@ class MilestoneProgressionService
                     'idempotency_key' => $key,
                     'amount_minor' => $tier->total_reward_amount_minor,
                     'account_credit_bonus_minor_snapshot' => max(0, (int) $tier->account_credit_bonus_minor),
+                    'preferred_payout_method_snapshot' => $payoutMethod->value,
                     'currency' => $tier->currency,
                     'status' => 'pending_approval',
                 ]);
@@ -199,12 +203,32 @@ class MilestoneProgressionService
                 'threshold' => $tier->threshold,
                 'amount_minor' => $tier->total_reward_amount_minor,
                 'account_credit_bonus_minor_snapshot' => $reward->account_credit_bonus_minor_snapshot,
+                'preferred_payout_method_snapshot' => $payoutMethod->value,
                 'cycle_number' => $cycleNumber,
             ]);
             RewardCreated::dispatch($reward);
 
             return $reward;
         }, attempts: 3);
+    }
+
+    /**
+     * Claim requires a configured, member-selectable payout method.
+     * That method is snapshotted onto the reward and never re-read later.
+     */
+    public function requireConfiguredClaimMethod(AmbassadorProfile $profile): PayoutMethod
+    {
+        $payout = $profile->relationLoaded('payoutProfile')
+            ? $profile->payoutProfile
+            : $profile->payoutProfile()->first();
+
+        if (! $payout || ! $payout->isConfigured() || ! $payout->preferred_method->isConfigurable()) {
+            throw new MilestoneClaimUnavailableException(
+                'Choose how you\'d like to receive rewards before claiming.'
+            );
+        }
+
+        return $payout->preferred_method;
     }
 
     /**

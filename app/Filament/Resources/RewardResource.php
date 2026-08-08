@@ -113,13 +113,20 @@ class RewardResource extends Resource
             ])->visible(fn (Reward $r) => $r->allocations()->exists()),
 
             Section::make('Payout preference')->schema([
-                TextEntry::make('preferred_payout_method')
-                    ->label('Payout method')
+                TextEntry::make('preferred_payout_method_snapshot')
+                    ->label('Claimed payout method')
+                    ->formatStateUsing(fn ($state) => $state instanceof PayoutMethod
+                        ? $state->label()
+                        : (PayoutMethod::tryFrom((string) $state)?->label() ?? 'Not snapshotted (legacy)'))
+                    ->badge()
+                    ->color(fn (Reward $r) => $r->claimedPayoutMethod() ? 'success' : 'warning'),
+                TextEntry::make('current_payout_method')
+                    ->label('Current member preference')
                     ->state(fn (Reward $r) => $r->ambassadorProfile?->payoutProfile?->preferred_method?->label() ?? 'Not configured')
                     ->badge()
-                    ->color(fn (Reward $r) => $r->ambassadorProfile?->hasConfiguredPayoutMethod() ? 'success' : 'danger'),
+                    ->color(fn (Reward $r) => $r->ambassadorProfile?->hasConfiguredPayoutMethod() ? 'gray' : 'danger'),
                 TextEntry::make('payout_configured')
-                    ->label('Configured')
+                    ->label('Destination configured')
                     ->state(fn (Reward $r) => $r->ambassadorProfile?->hasConfiguredPayoutMethod() ? 'Yes' : 'No')
                     ->badge()
                     ->color(fn (Reward $r) => $r->ambassadorProfile?->hasConfiguredPayoutMethod() ? 'success' : 'danger'),

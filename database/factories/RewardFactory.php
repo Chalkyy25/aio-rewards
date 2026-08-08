@@ -19,6 +19,7 @@ class RewardFactory extends Factory
             'milestone_index' => 1,
             'amount_minor' => 5000,
             'account_credit_bonus_minor_snapshot' => 0,
+            'preferred_payout_method_snapshot' => null,
             'currency' => 'gbp',
             'status' => 'pending_approval',
         ];

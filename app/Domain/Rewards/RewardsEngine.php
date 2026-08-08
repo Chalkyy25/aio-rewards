@@ -137,6 +137,7 @@ class RewardsEngine
             }
 
             $method = $paymentMethod
+                ?: $locked->claimedPayoutMethod()?->value
                 ?: $locked->ambassadorProfile?->payoutProfile?->preferred_method?->value
                 ?: PayoutMethod::BankTransfer->value;
 

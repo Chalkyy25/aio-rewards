@@ -5,7 +5,9 @@ namespace Tests\Feature\Rewards;
 use App\Domain\Referrals\ConversionService;
 use App\Domain\Rewards\MilestoneClaimUnavailableException;
 use App\Domain\Rewards\MilestoneProgressionService;
+use App\Domain\Rewards\RewardsEngine;
 use App\Models\AmbassadorProfile;
+use App\Models\MemberPayoutProfile;
 use App\Models\Package;
 use App\Models\Purchase;
 use App\Models\ReferralAllocation;
@@ -15,6 +17,7 @@ use App\Models\RewardMilestoneTier;
 use App\Models\RewardRule;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -32,6 +35,7 @@ class MilestoneProgressionTest extends TestCase
         $this->seed(RolesAndPermissionsSeeder::class);
         $this->user = User::factory()->create(['is_active' => true, 'email_verified_at' => now()]);
         $this->profile = AmbassadorProfile::factory()->for($this->user)->create(['flagged_for_review' => false]);
+        MemberPayoutProfile::factory()->forProfile($this->profile)->accountCredit()->create();
         // The migration seeds tier 1 (5 → £50) and tier 2 (10 → £110).
     }
 
@@ -230,7 +234,7 @@ class MilestoneProgressionTest extends TestCase
         $this->approveConversions(5);
         $r = $this->svc()->claim($this->profile, $this->tier(5), $this->user);
         $conv = ReferralConversion::query()->first();
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
         ReferralAllocation::create([
             'referral_conversion_id' => $conv->id,
             'ambassador_profile_id' => $this->profile->id,
@@ -268,9 +272,9 @@ class MilestoneProgressionTest extends TestCase
     {
         $this->approveConversions(5);
         $r = $this->svc()->claim($this->profile, $this->tier(5), $this->user);
-        app(\App\Domain\Rewards\RewardsEngine::class)->approve($r->fresh(), $this->user);
-        app(\App\Domain\Rewards\RewardsEngine::class)->markPaid($r->fresh(), $this->user);
-        app(\App\Domain\Rewards\RewardsEngine::class)->reverse($r->fresh(), $this->user, 'chargeback');
+        app(RewardsEngine::class)->approve($r->fresh(), $this->user);
+        app(RewardsEngine::class)->markPaid($r->fresh(), $this->user);
+        app(RewardsEngine::class)->reverse($r->fresh(), $this->user, 'chargeback');
 
         $p = $this->svc()->progressFor($this->profile);
         $this->assertSame(0, $p->eligibleCount, 'Referrals stay consumed after paid reversal');

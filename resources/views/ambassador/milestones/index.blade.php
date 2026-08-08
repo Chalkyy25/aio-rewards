@@ -6,11 +6,14 @@
     /** @var \App\Domain\Rewards\MilestoneProgress $progress */
     /** @var \App\Models\AmbassadorProfile $profile */
     /** @var array<string,int> $summary */
+    /** @var ?\App\Enums\PayoutMethod $claimMethod */
+    /** @var bool $canClaim */
     $flashError = session('milestone_error');
     $flashClaimed = session('milestone_claimed');
     $eligible = $progress->eligibleCount;
     $available = $progress->availableTier;
     $next = $progress->nextTier;
+    $isAccountCredit = $claimMethod === \App\Enums\PayoutMethod::AccountCredit;
 @endphp
 
 @push('head')
@@ -22,6 +25,7 @@
              font-size: .95rem; }
     .flash.error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
     .flash.success { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+    .flash.info { background: #eff6ff; color: #1e3a8a; border: 1px solid #bfdbfe; }
 
     .summary-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: .75rem;
                     margin-bottom: 1.5rem; }
@@ -45,14 +49,20 @@
     .bar-legend { display: flex; justify-content: space-between; margin-top: .5rem;
                   color: #cbd5e1; font-size: .85rem; }
 
-    .cta-row { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1rem; }
+    .cta-row { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1rem; align-items: center; }
     .btn-cash { background: #22c55e; color: #052e14; border: 0;
                 padding: .8rem 1.25rem; border-radius: .6rem; font-weight: 700;
                 font-size: 1rem; cursor: pointer; text-decoration: none;
                 display: inline-flex; align-items: center; gap: .5rem; }
     .btn-cash:hover { filter: brightness(1.05); }
     .btn-cash[disabled] { opacity: .5; cursor: not-allowed; }
+    .btn-secondary { background: transparent; color: #e2e8f0; border: 1px solid #64748b;
+                     padding: .65rem 1rem; border-radius: .6rem; font-weight: 600;
+                     font-size: .9rem; text-decoration: none; display: inline-flex; }
+    .btn-secondary:hover { border-color: #94a3b8; color: #fff; }
     .save-hint { color: #cbd5e1; font-size: .9rem; align-self: center; }
+    .payout-hint { color: #cbd5e1; font-size: .85rem; margin-top: .5rem; }
+    .payout-hint a { color: #93c5fd; font-weight: 600; }
 
     .ladder { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
               gap: 1rem; }
@@ -77,14 +87,13 @@
     .journey-empty { background: #fff; border: 2px dashed #cbd5e1; border-radius: 1rem;
                      padding: 2rem; text-align: center; color: #64748b; }
 
-    /* Mobile: vertical journey */
     @media (max-width: 767px) {
         .summary-grid { grid-template-columns: 1fr 1fr; }
         .ladder { grid-template-columns: 1fr; }
         .journey-hero { padding: 1.25rem; border-radius: .75rem; }
         .journey-hero h2 { font-size: 1.35rem; }
-        .cta-row { flex-direction: column; }
-        .btn-cash { width: 100%; justify-content: center; }
+        .cta-row { flex-direction: column; align-items: stretch; }
+        .btn-cash, .btn-secondary { width: 100%; justify-content: center; }
     }
     @media (max-width: 460px) {
         .summary-grid { grid-template-columns: 1fr; }
@@ -101,11 +110,16 @@
     @endif
     @if ($flashClaimed)
         <div class="flash success" role="status" data-testid="milestone-flash-success">
-            Claim submitted for {{ $flashClaimed['amount'] }} — awaiting admin approval.
+            Claim submitted for {{ $flashClaimed['amount'] }}
+            @if (($flashClaimed['method'] ?? null) === 'account_credit')
+                Account Credit
+            @elseif (($flashClaimed['method'] ?? null) === 'bank_transfer')
+                Bank Transfer
+            @endif
+            — awaiting admin approval.
         </div>
     @endif
 
-    {{-- Reward summary --}}
     <div class="summary-grid" data-testid="milestone-summary">
         <div class="summary-card">
             <h3>Available now</h3>
@@ -129,10 +143,18 @@
         </div>
     </div>
 
-    {{-- Hero journey card --}}
     @php
         $maxTier = collect($progress->tiers)->last();
         $isMaxAvailable = $available && $maxTier && $available->id === $maxTier->id;
+
+        $claimButtonLabel = null;
+        if ($available && $canClaim) {
+            if ($isAccountCredit) {
+                $claimButtonLabel = 'Claim £'.number_format($available->accountCreditTotalMinor() / 100, 0).' Account Credit';
+            } else {
+                $claimButtonLabel = ($isMaxAvailable ? 'Claim' : 'Cash out').' £'.number_format($available->total_reward_amount_minor / 100, 0);
+            }
+        }
     @endphp
     <section class="journey-hero" data-testid="journey-hero">
         <p class="kicker">Your reward journey</p>
@@ -144,45 +166,39 @@
                 is available to claim. You've reached the maximum reward for this cycle.
                 Claim your reward to start your next journey.
             </p>
-            <div class="cta-row">
-                <form method="POST" action="{{ route('ambassador.milestones.claim', $available) }}">
-                    @csrf
-                    <input type="hidden" name="idempotency_key"
-                           value="mc:{{ $profile->id }}:{{ $progress->cycleNumber }}:{{ $available->id }}">
-                    <button type="submit" class="btn-cash"
-                            data-testid="claim-cta-{{ $available->threshold }}">
-                        Claim £{{ number_format($available->total_reward_amount_minor / 100, 0) }}
-                    </button>
-                </form>
-            </div>
 
-            <div data-testid="reward-payout-choice" style="margin-top:1.25rem;display:grid;grid-template-columns:1fr 1fr;gap:1rem">
-                <div style="background:#fff;border:1px solid #e2e8f0;border-radius:.75rem;padding:1rem;color:#0f172a">
-                    <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;color:#64748b">Bank Transfer</div>
-                    <div style="font-size:1.35rem;font-weight:700;margin:.35rem 0" data-testid="payout-bank-amount">
-                        £{{ number_format($available->total_reward_amount_minor / 100, 0) }} CASH
-                    </div>
-                    <p style="margin:0;font-size:.9rem;color:#475569">Receive £{{ number_format($available->total_reward_amount_minor / 100, 0) }} directly to your bank.</p>
-                </div>
-                <div style="background:#0f172a;border-radius:.75rem;padding:1rem;color:#fff">
-                    <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;opacity:.75">Account Credit</div>
-                    <div style="font-size:1.35rem;font-weight:700;margin:.35rem 0" data-testid="payout-credit-amount">
-                        £{{ number_format($available->accountCreditTotalMinor() / 100, 0) }} CREDIT
-                    </div>
-                    @if ($available->account_credit_bonus_minor > 0)
-                        <div style="font-size:.9rem;color:#86efac;margin-bottom:.35rem" data-testid="payout-credit-bonus">
-                            +£{{ number_format($available->account_credit_bonus_minor / 100, 0) }} BONUS
+            @include('ambassador.milestones._payout_choice', ['tier' => $available])
+
+            <div class="cta-row">
+                @if ($canClaim)
+                    <form method="POST" action="{{ route('ambassador.milestones.claim', $available) }}">
+                        @csrf
+                        <input type="hidden" name="idempotency_key"
+                               value="mc:{{ $profile->id }}:{{ $progress->cycleNumber }}:{{ $available->id }}">
+                        <button type="submit" class="btn-cash"
+                                data-testid="claim-cta-{{ $available->threshold }}">
+                            {{ $claimButtonLabel }}
+                        </button>
+                    </form>
+                @else
+                    <div class="flash info" data-testid="claim-requires-payout" style="margin:0;flex:1">
+                        Choose how you'd like to receive rewards before claiming.
+                        <div style="margin-top:.5rem">
+                            <a href="{{ route('ambassador.payout-settings') }}" class="btn-cash"
+                               data-testid="set-payout-method-cta">Set payout method</a>
                         </div>
-                    @endif
-                    <p style="margin:0;font-size:.9rem;opacity:.85">
-                        @if ($available->account_credit_bonus_minor > 0)
-                            Get an extra £{{ number_format($available->account_credit_bonus_minor / 100, 0) }} by keeping your reward as AIO Account Credit.
-                        @else
-                            Keep your reward as AIO Account Credit toward package purchases.
-                        @endif
-                    </p>
-                </div>
+                    </div>
+                @endif
+                <a href="{{ route('ambassador.payout-settings') }}" class="btn-secondary"
+                   data-testid="change-payout-method">Change payout method</a>
             </div>
+            @if ($canClaim)
+                <p class="payout-hint" data-testid="claim-default-hint">
+                    Claiming via your default:
+                    <strong>{{ $claimMethod->label() }}</strong>.
+                    <a href="{{ route('ambassador.payout-settings') }}">Change payout method</a>
+                </p>
+            @endif
         @elseif ($available && $next)
             <h2 data-testid="hero-available-headline">
                 £{{ number_format($available->total_reward_amount_minor / 100, 0) }} is available to claim
@@ -202,49 +218,42 @@
                 <span data-testid="hero-progress-remaining">{{ $progress->referralsRemaining }} to go</span>
             </div>
 
-            <div data-testid="reward-payout-choice" style="margin:1.25rem 0;display:grid;grid-template-columns:1fr 1fr;gap:1rem">
-                <div style="background:#fff;border:1px solid #e2e8f0;border-radius:.75rem;padding:1rem;color:#0f172a">
-                    <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;color:#64748b">Bank Transfer</div>
-                    <div style="font-size:1.35rem;font-weight:700;margin:.35rem 0" data-testid="payout-bank-amount">
-                        £{{ number_format($available->total_reward_amount_minor / 100, 0) }} CASH
-                    </div>
-                    <p style="margin:0;font-size:.9rem;color:#475569">Receive £{{ number_format($available->total_reward_amount_minor / 100, 0) }} directly to your bank.</p>
-                </div>
-                <div style="background:#0f172a;border-radius:.75rem;padding:1rem;color:#fff">
-                    <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;opacity:.75">Account Credit</div>
-                    <div style="font-size:1.35rem;font-weight:700;margin:.35rem 0" data-testid="payout-credit-amount">
-                        £{{ number_format($available->accountCreditTotalMinor() / 100, 0) }} CREDIT
-                    </div>
-                    @if ($available->account_credit_bonus_minor > 0)
-                        <div style="font-size:.9rem;color:#86efac;margin-bottom:.35rem" data-testid="payout-credit-bonus">
-                            +£{{ number_format($available->account_credit_bonus_minor / 100, 0) }} BONUS
-                        </div>
-                    @endif
-                    <p style="margin:0;font-size:.9rem;opacity:.85">
-                        @if ($available->account_credit_bonus_minor > 0)
-                            Get an extra £{{ number_format($available->account_credit_bonus_minor / 100, 0) }} by keeping your reward as AIO Account Credit.
-                        @else
-                            Keep your reward as AIO Account Credit toward package purchases.
-                        @endif
-                    </p>
-                </div>
-            </div>
+            @include('ambassador.milestones._payout_choice', ['tier' => $available])
 
             <div class="cta-row">
-                <form method="POST" action="{{ route('ambassador.milestones.claim', $available) }}">
-                    @csrf
-                    <input type="hidden" name="idempotency_key"
-                           value="mc:{{ $profile->id }}:{{ $progress->cycleNumber }}:{{ $available->id }}">
-                    <button type="submit" class="btn-cash"
-                            data-testid="claim-cta-{{ $available->threshold }}">
-                        Cash out £{{ number_format($available->total_reward_amount_minor / 100, 0) }}
-                    </button>
-                </form>
+                @if ($canClaim)
+                    <form method="POST" action="{{ route('ambassador.milestones.claim', $available) }}">
+                        @csrf
+                        <input type="hidden" name="idempotency_key"
+                               value="mc:{{ $profile->id }}:{{ $progress->cycleNumber }}:{{ $available->id }}">
+                        <button type="submit" class="btn-cash"
+                                data-testid="claim-cta-{{ $available->threshold }}">
+                            {{ $claimButtonLabel }}
+                        </button>
+                    </form>
+                @else
+                    <div class="flash info" data-testid="claim-requires-payout" style="margin:0;flex:1">
+                        Choose how you'd like to receive rewards before claiming.
+                        <div style="margin-top:.5rem">
+                            <a href="{{ route('ambassador.payout-settings') }}" class="btn-cash"
+                               data-testid="set-payout-method-cta">Set payout method</a>
+                        </div>
+                    </div>
+                @endif
+                <a href="{{ route('ambassador.payout-settings') }}" class="btn-secondary"
+                   data-testid="change-payout-method">Change payout method</a>
                 <span class="save-hint" data-testid="save-and-grow-hint">
                     or keep building — reach {{ $next->threshold }} to unlock
                     £{{ number_format($next->total_reward_amount_minor / 100, 0) }}
                 </span>
             </div>
+            @if ($canClaim)
+                <p class="payout-hint" data-testid="claim-default-hint">
+                    Claiming via your default:
+                    <strong>{{ $claimMethod->label() }}</strong>.
+                    <a href="{{ route('ambassador.payout-settings') }}">Change payout method</a>
+                </p>
+            @endif
         @elseif ($next)
             <h2 data-testid="hero-progress-headline">
                 {{ $eligible }} of {{ $next->threshold }} approved referrals
@@ -267,7 +276,6 @@
         @endif
     </section>
 
-    {{-- Full ladder --}}
     <div class="ladder" data-testid="milestone-ladder">
         @forelse ($progress->tiers as $t)
             @php
@@ -325,4 +333,3 @@
         @endif
     </div>
 @endsection
-

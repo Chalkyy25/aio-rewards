@@ -31,23 +31,29 @@ final class MarkRewardPaidActionFactory
                     return false;
                 }
 
-                $method = $r->ambassadorProfile?->payoutProfile?->preferred_method;
-
                 // Account Credit uses a dedicated fulfilment action.
-                return $method !== PayoutMethod::AccountCredit;
+                return $r->fulfilmentPayoutMethod() !== PayoutMethod::AccountCredit;
             })
             ->modalHeading('Confirm payment')
             ->modalDescription(function (Reward $r) {
-                $payout = $r->ambassadorProfile?->payoutProfile;
-                $methodLabel = ($payout?->preferred_method ?? PayoutMethod::BankTransfer)->label();
+                $claimMethod = $r->claimedPayoutMethod();
+                $methodLabel = ($claimMethod
+                    ?? $r->ambassadorProfile?->payoutProfile?->preferred_method
+                    ?? PayoutMethod::BankTransfer)->label();
+                $legacyNote = $claimMethod === null
+                    ? ' Legacy claim: no payout method was snapshotted at claim time.'
+                    : '';
 
+                $payout = $r->ambassadorProfile?->payoutProfile;
                 if (! $payout || ! $payout->isConfigured()) {
-                    return 'Payment method that will be recorded: '.$methodLabel
-                        .'. Warning: this Rewards Member has no payout method configured. Confirm only if you have already paid them by an alternate manual method. AIO Rewards does not send money automatically.';
+                    return 'Payment method that will be recorded: '.$methodLabel.'.'
+                        .$legacyNote
+                        .' Warning: this Rewards Member has no payout method configured. Confirm only if you have already paid them by an alternate manual method. AIO Rewards does not send money automatically.';
                 }
 
-                return 'Payment method that will be recorded: '.$methodLabel
-                    .'. Confirm only after you have manually sent this payment outside AIO Rewards. This does not transfer money automatically.';
+                return 'Payment method that will be recorded: '.$methodLabel.'.'
+                    .$legacyNote
+                    .' Confirm only after you have manually sent this payment outside AIO Rewards. This does not transfer money automatically.';
             })
             ->modalSubmitActionLabel('Confirm payment')
             ->schema([
@@ -61,7 +67,8 @@ final class MarkRewardPaidActionFactory
                     ->helperText('Optional internal note. Do not paste full bank details here.'),
             ])
             ->action(function (Reward $r, array $data, RewardsEngine $engine) {
-                $method = $r->ambassadorProfile?->payoutProfile?->preferred_method?->value
+                $method = $r->claimedPayoutMethod()?->value
+                    ?: $r->ambassadorProfile?->payoutProfile?->preferred_method?->value
                     ?: PayoutMethod::BankTransfer->value;
 
                 try {

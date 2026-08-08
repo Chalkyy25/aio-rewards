@@ -6,6 +6,7 @@ use App\Domain\Referrals\ConversionService;
 use App\Domain\Rewards\MilestoneClaimUnavailableException;
 use App\Domain\Rewards\MilestoneProgressionService;
 use App\Models\AmbassadorProfile;
+use App\Models\MemberPayoutProfile;
 use App\Models\Package;
 use App\Models\Purchase;
 use App\Models\ReferralAllocation;
@@ -36,6 +37,7 @@ class MilestoneLadderExtensionTest extends TestCase
         $this->seed(RolesAndPermissionsSeeder::class);
         $this->user = User::factory()->create(['is_active' => true, 'email_verified_at' => now()]);
         $this->profile = AmbassadorProfile::factory()->for($this->user)->create(['flagged_for_review' => false]);
+        MemberPayoutProfile::factory()->forProfile($this->profile)->accountCredit()->create();
     }
 
     private function approveConversions(int $n): void

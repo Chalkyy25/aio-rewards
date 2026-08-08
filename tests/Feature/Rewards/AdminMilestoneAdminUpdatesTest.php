@@ -2,19 +2,22 @@
 
 namespace Tests\Feature\Rewards;
 
-use App\Domain\Rewards\MilestoneProgressionService;
 use App\Domain\Referrals\ConversionService;
+use App\Domain\Rewards\MilestoneProgressionService;
 use App\Enums\Role;
 use App\Filament\Resources\AmbassadorResource;
 use App\Filament\Resources\ReferralAllocationResource;
 use App\Filament\Resources\ReferralAllocationResource\Pages\ListReferralAllocations;
-use App\Filament\Resources\RewardResource;
 use App\Filament\Resources\RewardMilestoneTierResource\Pages\CreateRewardMilestoneTier;
+use App\Filament\Resources\RewardResource;
+use App\Filament\Resources\RewardResource\Pages\ListRewards;
 use App\Filament\Widgets\MilestoneProgressionWidget;
 use App\Filament\Widgets\RewardsOverviewWidget;
 use App\Models\AmbassadorProfile;
+use App\Models\MemberPayoutProfile;
 use App\Models\Package;
 use App\Models\Purchase;
+use App\Models\ReferralAllocation;
 use App\Models\ReferralConversion;
 use App\Models\Reward;
 use App\Models\RewardMilestoneTier;
@@ -49,6 +52,7 @@ class AdminMilestoneAdminUpdatesTest extends TestCase
 
         $this->member = User::factory()->create(['email_verified_at' => now(), 'is_active' => true]);
         $this->profile = AmbassadorProfile::factory()->for($this->member)->create();
+        MemberPayoutProfile::factory()->forProfile($this->profile)->accountCredit()->create();
     }
 
     private function approveConversions(int $n): void
@@ -167,7 +171,7 @@ class AdminMilestoneAdminUpdatesTest extends TestCase
     public function test_allocation_resource_is_read_only(): void
     {
         $this->assertFalse(ReferralAllocationResource::canCreate());
-        $random = new \App\Models\ReferralAllocation();
+        $random = new ReferralAllocation;
         $this->assertFalse(ReferralAllocationResource::canEdit($random));
         $this->assertFalse(ReferralAllocationResource::canDelete($random));
     }
@@ -182,7 +186,7 @@ class AdminMilestoneAdminUpdatesTest extends TestCase
         $this->actingAs($this->admin);
         Livewire::test(ListReferralAllocations::class)
             ->assertOk()
-            ->assertCanSeeTableRecords(\App\Models\ReferralAllocation::all());
+            ->assertCanSeeTableRecords(ReferralAllocation::all());
     }
 
     // ---- Ambassador infolist reward progress ---------------------------
@@ -246,7 +250,7 @@ class AdminMilestoneAdminUpdatesTest extends TestCase
         );
 
         $this->actingAs($this->admin);
-        Livewire::test(\App\Filament\Resources\RewardResource\Pages\ListRewards::class)
+        Livewire::test(ListRewards::class)
             ->callTableAction('reject', $reward, ['note' => 'admin error'])
             ->assertHasNoTableActionErrors();
 
@@ -256,7 +260,7 @@ class AdminMilestoneAdminUpdatesTest extends TestCase
         // Domain path released allocations — proving the action didn't
         // just mutate `rewards.status` directly but went through the
         // MilestoneProgressionService.
-        $this->assertSame(0, \App\Models\ReferralAllocation::query()
+        $this->assertSame(0, ReferralAllocation::query()
             ->where('reward_id', $reward->id)->whereNotNull('active_marker')->count());
     }
 }

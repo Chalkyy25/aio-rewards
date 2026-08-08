@@ -149,11 +149,51 @@ class Purchase extends Model
 
     public function priceFormatted(): string
     {
+        return $this->formatAmountMinor((int) $this->amount_minor);
+    }
+
+    /**
+     * Format a stored minor amount using this purchase's currency.
+     * Display helper only — does not recalculate from package pricing.
+     */
+    public function formatAmountMinor(int $minor): string
+    {
         return match (strtolower($this->currency)) {
-            'gbp' => '£'.number_format($this->amount_minor / 100, 2),
-            'eur' => '€'.number_format($this->amount_minor / 100, 2),
-            default => strtoupper($this->currency).' '.number_format($this->amount_minor / 100, 2),
+            'gbp' => '£'.number_format($minor / 100, 2),
+            'eur' => '€'.number_format($minor / 100, 2),
+            default => strtoupper($this->currency).' '.number_format($minor / 100, 2),
         };
+    }
+
+    /**
+     * Account Credit applied on this purchase (null/legacy treated as 0).
+     */
+    public function accountCreditAppliedForDisplay(): int
+    {
+        return (int) ($this->account_credit_applied_minor ?? 0);
+    }
+
+    public function showsAccountCreditRow(): bool
+    {
+        return $this->accountCreditAppliedForDisplay() > 0;
+    }
+
+    /**
+     * Whether the purchase has an immutable card/external split amount.
+     * Null = legacy purchase without split data — do not invent a card row.
+     */
+    public function hasExternalAmountSplit(): bool
+    {
+        return $this->external_amount_minor !== null;
+    }
+
+    /**
+     * Show Card payment when split data exists and the external amount is > 0.
+     * Hidden for full Account Credit (external = 0) and for legacy (null).
+     */
+    public function showsCardPaymentRow(): bool
+    {
+        return $this->hasExternalAmountSplit() && (int) $this->external_amount_minor > 0;
     }
 
     /**

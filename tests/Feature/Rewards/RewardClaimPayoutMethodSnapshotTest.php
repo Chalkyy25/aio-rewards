@@ -261,4 +261,115 @@ class RewardClaimPayoutMethodSnapshotTest extends TestCase
         $this->assertSame(5000, $reward->memberFacingAmountMinor());
         $this->assertSame('Pending reward', $reward->memberStatusHeadline());
     }
+
+    public function test_mark_paid_refuses_account_credit_snapshot_even_with_bank_override(): void
+    {
+        $this->setAccountCreditPreference();
+        $this->approveConversions(5);
+        $tier = RewardMilestoneTier::query()->where('threshold', 5)->firstOrFail();
+        $reward = app(MilestoneProgressionService::class)->claim($this->profile, $tier, $this->member);
+        app(RewardsEngine::class)->approve($reward, $this->admin);
+        $reward->refresh();
+
+        $this->assertFalse(app(RewardsEngine::class)->markPaid(
+            $reward,
+            $this->admin,
+            paymentMethod: PayoutMethod::BankTransfer->value,
+        ));
+        $this->assertFalse(app(RewardsEngine::class)->markPaid($reward->fresh(), $this->admin));
+        $this->assertSame('approved', $reward->fresh()->status);
+        $this->assertNull($reward->fresh()->payment_method);
+    }
+
+    public function test_mark_paid_honours_bank_snapshot_and_ignores_account_credit_override(): void
+    {
+        $this->setBankPreference();
+        $this->approveConversions(5);
+        $tier = RewardMilestoneTier::query()->where('threshold', 5)->firstOrFail();
+        $reward = app(MilestoneProgressionService::class)->claim($this->profile, $tier, $this->member);
+        app(RewardsEngine::class)->approve($reward, $this->admin);
+        $reward->refresh();
+
+        $this->assertTrue(app(RewardsEngine::class)->markPaid(
+            $reward,
+            $this->admin,
+            paymentMethod: PayoutMethod::BankTransfer->value,
+            paymentReference: 'BT-OK',
+        ));
+        $this->assertSame('paid', $reward->fresh()->status);
+        $this->assertSame(PayoutMethod::BankTransfer->value, $reward->fresh()->payment_method);
+    }
+
+    public function test_mark_paid_bank_snapshot_ignores_explicit_account_credit_argument(): void
+    {
+        $this->setBankPreference();
+        $this->approveConversions(5);
+        $tier = RewardMilestoneTier::query()->where('threshold', 5)->firstOrFail();
+        $reward = app(MilestoneProgressionService::class)->claim($this->profile, $tier, $this->member);
+        app(RewardsEngine::class)->approve($reward, $this->admin);
+
+        $this->assertTrue(app(RewardsEngine::class)->markPaid(
+            $reward->fresh(),
+            $this->admin,
+            paymentMethod: PayoutMethod::AccountCredit->value,
+            paymentReference: 'SHOULD-STAY-BANK',
+        ));
+        $fresh = $reward->fresh();
+        $this->assertSame('paid', $fresh->status);
+        $this->assertSame(PayoutMethod::BankTransfer->value, $fresh->payment_method);
+        $this->assertSame(0, AccountCreditTransaction::count());
+    }
+
+    public function test_mark_paid_still_refuses_after_live_preference_switch_from_ac_claim(): void
+    {
+        $this->setAccountCreditPreference();
+        $this->approveConversions(5);
+        $tier = RewardMilestoneTier::query()->where('threshold', 5)->firstOrFail();
+        $reward = app(MilestoneProgressionService::class)->claim($this->profile, $tier, $this->member);
+        app(RewardsEngine::class)->approve($reward, $this->admin);
+
+        $this->setBankPreference();
+
+        $this->assertFalse(app(RewardsEngine::class)->markPaid(
+            $reward->fresh(),
+            $this->admin,
+            paymentMethod: PayoutMethod::BankTransfer->value,
+        ));
+        $this->assertSame('approved', $reward->fresh()->status);
+        $this->assertSame(PayoutMethod::AccountCredit, $reward->fresh()->preferred_payout_method_snapshot);
+    }
+
+    public function test_historical_null_snapshot_mark_paid_uses_legacy_fallback(): void
+    {
+        MemberPayoutProfile::factory()->forProfile($this->profile)->bankTransfer()->create();
+
+        $reward = Reward::factory()->create([
+            'ambassador_profile_id' => $this->profile->id,
+            'status' => 'approved',
+            'approved_at' => now(),
+            'amount_minor' => 5000,
+            'preferred_payout_method_snapshot' => null,
+            'origin' => 'legacy_rule',
+        ]);
+
+        $this->assertTrue(app(RewardsEngine::class)->markPaid($reward, $this->admin));
+        $this->assertSame(PayoutMethod::BankTransfer->value, $reward->fresh()->payment_method);
+
+        $acLegacy = Reward::factory()->create([
+            'ambassador_profile_id' => $this->profile->id,
+            'status' => 'approved',
+            'approved_at' => now(),
+            'amount_minor' => 5000,
+            'preferred_payout_method_snapshot' => null,
+            'origin' => 'legacy_rule',
+            'milestone_index' => 2,
+        ]);
+
+        $this->assertFalse(app(RewardsEngine::class)->markPaid(
+            $acLegacy,
+            $this->admin,
+            paymentMethod: PayoutMethod::AccountCredit->value,
+        ));
+        $this->assertSame('approved', $acLegacy->fresh()->status);
+    }
 }

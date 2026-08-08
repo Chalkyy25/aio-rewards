@@ -93,7 +93,12 @@ class RewardTransitionSemanticsTest extends TestCase
 
     public function test_paid_can_reverse_preserving_payment_metadata(): void
     {
+        MemberPayoutProfile::query()->where('ambassador_profile_id', $this->profile->id)->delete();
+        MemberPayoutProfile::factory()->forProfile($this->profile)->bankTransfer()->create();
+
         $reward = $this->claim();
+        $this->assertSame(PayoutMethod::BankTransfer, $reward->preferred_payout_method_snapshot);
+
         app(RewardsEngine::class)->approve($reward, $this->member);
         app(RewardsEngine::class)->markPaid(
             $reward->fresh(),

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Rewards;
 
+use App\Domain\Credits\AccountCreditFulfilmentService;
 use App\Domain\Referrals\ConversionService;
 use App\Domain\Rewards\MilestoneClaimUnavailableException;
 use App\Domain\Rewards\MilestoneProgressionService;
@@ -273,7 +274,7 @@ class MilestoneProgressionTest extends TestCase
         $this->approveConversions(5);
         $r = $this->svc()->claim($this->profile, $this->tier(5), $this->user);
         app(RewardsEngine::class)->approve($r->fresh(), $this->user);
-        app(RewardsEngine::class)->markPaid($r->fresh(), $this->user);
+        $this->assertTrue(app(AccountCreditFulfilmentService::class)->apply($r->fresh(), $this->user));
         app(RewardsEngine::class)->reverse($r->fresh(), $this->user, 'chargeback');
 
         $p = $this->svc()->progressFor($this->profile);

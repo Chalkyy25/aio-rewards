@@ -1,6 +1,11 @@
 @extends('layouts.public')
 @section('title', 'Review your order')
 @section('content')
+@php
+    $fmt = static fn (int $minor): string => '£'.number_format($minor / 100, 2);
+    $with = $quoteWithCredit ?? ['credit_applied_minor' => 0, 'external_amount_minor' => $package->amount_minor];
+    $without = $quoteWithout ?? ['credit_applied_minor' => 0, 'external_amount_minor' => $package->amount_minor];
+@endphp
 <div style="max-width:640px;margin:2rem auto;background:#fff;border-radius:1rem;padding:2rem;box-shadow:0 2px 30px -12px rgba(15,23,42,.12)">
     <h1 style="margin:0 0 1rem">Review your order</h1>
     @if ($errors->any())<div style="background:#fef2f2;color:#991b1b;padding:.75rem 1rem;border-radius:.5rem" data-testid="review-error">{{ $errors->first() }}</div>@endif
@@ -27,8 +32,29 @@
         </div>
     @endif
 
-    <form method="POST" action="{{ route('checkout.pay', ['slug' => $package->slug]) }}" style="margin-top:1.5rem">
+    <form method="POST" action="{{ route('checkout.pay', ['slug' => $package->slug]) }}" style="margin-top:1.5rem" id="checkout-review-form">
         @csrf
+
+        <div data-testid="review-payment-breakdown"
+             style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:.75rem;padding:1rem;margin-bottom:1.25rem">
+            <div style="font-weight:600;margin-bottom:.75rem">Payment summary</div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:.35rem">
+                <span>Package</span>
+                <span data-testid="review-breakdown-package">{{ $package->priceFormatted() }}</span>
+            </div>
+            <div id="review-credit-line" style="display:none;justify-content:space-between;margin-bottom:.35rem;color:#047857">
+                <span>Account Credit</span>
+                <span data-testid="review-breakdown-credit">−{{ $fmt((int) $with['credit_applied_minor']) }}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-weight:700;border-top:1px solid #e2e8f0;padding-top:.5rem;margin-top:.5rem">
+                <span>Amount to pay by card</span>
+                <span data-testid="review-breakdown-card"
+                      data-with-credit="{{ $fmt((int) $with['external_amount_minor']) }}"
+                      data-without-credit="{{ $fmt((int) $without['external_amount_minor']) }}">
+                    {{ $fmt((int) $without['external_amount_minor']) }}
+                </span>
+            </div>
+        </div>
 
         @if ($canUseCredit ?? false)
             <div data-testid="review-account-credit" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:.75rem;padding:1rem;margin-bottom:1.25rem">
@@ -36,7 +62,7 @@
                 <div data-testid="review-credit-available" style="font-size:1.25rem;font-weight:700;margin-bottom:.75rem">{{ $creditAvailableFormatted }}</div>
                 <label style="display:flex;align-items:flex-start;gap:.6rem;cursor:pointer">
                     <input type="checkbox" name="use_account_credit" value="1" data-testid="review-use-credit"
-                           style="margin-top:.2rem">
+                           style="margin-top:.2rem" id="review-use-credit">
                     <span>
                         Use Account Credit
                         <span style="display:block;color:#64748b;font-size:.85rem;margin-top:.2rem">
@@ -56,4 +82,19 @@
         </div>
     </form>
 </div>
+<script>
+(function () {
+    var box = document.getElementById('review-use-credit');
+    var line = document.getElementById('review-credit-line');
+    var card = document.querySelector('[data-testid="review-breakdown-card"]');
+    if (!box || !card) return;
+    function sync() {
+        var on = box.checked;
+        if (line) line.style.display = on ? 'flex' : 'none';
+        card.textContent = on ? card.getAttribute('data-with-credit') : card.getAttribute('data-without-credit');
+    }
+    box.addEventListener('change', sync);
+    sync();
+})();
+</script>
 @endsection

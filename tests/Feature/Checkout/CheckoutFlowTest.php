@@ -115,7 +115,7 @@ class CheckoutFlowTest extends TestCase
 
         $this->withSession(['checkout.details' => $this->validDetailsPayload(['package_slug' => 'test-package'])])
             ->post('/checkout/test-package/pay')
-            ->assertRedirect('/checkout/test-package/details')
+            ->assertRedirect('/checkout/test-package/review')
             ->assertSessionHasErrors(['stripe']);
     }
 

@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
@@ -23,6 +24,8 @@ use Illuminate\Support\Carbon;
  * @property int $amount_minor
  * @property int $account_credit_applied_minor
  * @property ?int $external_amount_minor
+ * @property int $external_refunded_minor
+ * @property int $account_credit_restored_minor
  * @property string $currency
  * @property string $status
  * @property string $fulfilment_status
@@ -57,8 +60,10 @@ class Purchase extends Model
     protected $fillable = [
         'package_id', 'buyer_name', 'buyer_email', 'preferred_username',
         'buyer_phone', 'buyer_telegram', 'delivery_method',
-        'amount_minor', 'account_credit_applied_minor', 'external_amount_minor', 'currency', 'status', 'fulfilment_status',
-        'stripe_session_id', 'stripe_payment_intent_id', 'stripe_charge_id',
+        'amount_minor', 'account_credit_applied_minor', 'external_amount_minor',
+        'external_refunded_minor', 'account_credit_restored_minor',
+        'currency', 'status', 'fulfilment_status',
+        'stripe_session_id', 'stripe_payment_intent_id', 'stripe_charge_id', 'active_payment_attempt_id',
         'attribution_id', 'referral_code_snapshot', 'ambassador_profile_id_snapshot',
         'terms_accepted_at', 'privacy_accepted_at', 'paid_at', 'fulfilled_at',
         'fulfilled_by_user_id',
@@ -80,6 +85,8 @@ class Purchase extends Model
             'amount_minor' => 'integer',
             'account_credit_applied_minor' => 'integer',
             'external_amount_minor' => 'integer',
+            'external_refunded_minor' => 'integer',
+            'account_credit_restored_minor' => 'integer',
             'terms_accepted_at' => 'datetime',
             'privacy_accepted_at' => 'datetime',
             'paid_at' => 'datetime',
@@ -103,6 +110,18 @@ class Purchase extends Model
     public function accountCreditReservation(): HasOne
     {
         return $this->hasOne(AccountCreditReservation::class);
+    }
+
+    /** @return HasMany<PurchasePaymentAttempt, $this> */
+    public function paymentAttempts(): HasMany
+    {
+        return $this->hasMany(PurchasePaymentAttempt::class);
+    }
+
+    /** @return BelongsTo<PurchasePaymentAttempt, $this> */
+    public function activePaymentAttempt(): BelongsTo
+    {
+        return $this->belongsTo(PurchasePaymentAttempt::class, 'active_payment_attempt_id');
     }
 
     /** @return BelongsTo<Package, $this> */

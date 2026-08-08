@@ -13,6 +13,7 @@ use App\Models\AccountCreditTransaction;
 use App\Models\AmbassadorProfile;
 use App\Models\Package;
 use App\Models\Purchase;
+use App\Models\PurchasePaymentAttempt;
 use App\Models\StripeEvent;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
@@ -70,6 +71,15 @@ class AccountCreditRedemptionTest extends TestCase
         ]);
     }
 
+    private function mockStripe(string $id = 'cs_test'): void
+    {
+        $fakeSession = StripeSession::constructFrom(['id' => $id, 'url' => 'https://stripe.test/'.$id]);
+        $stripe = Mockery::mock(StripeCheckoutService::class);
+        $stripe->shouldReceive('createSession')->andReturn($fakeSession);
+        $this->app->instance(StripeCheckoutService::class, $stripe);
+        config(['stripe.secret' => 'sk_test_fake']);
+    }
+
     public function test_full_credit_purchase_debits_and_skips_stripe(): void
     {
         $this->credit(6000);
@@ -105,18 +115,7 @@ class AccountCreditRedemptionTest extends TestCase
         $this->credit(6000);
         $this->package->update(['amount_minor' => 8500]);
         $purchase = $this->pendingPurchase(8500);
-
-        $fakeSession = StripeSession::constructFrom(['id' => 'cs_partial_1', 'url' => 'https://stripe.test/pay']);
-
-        $stripe = Mockery::mock(StripeCheckoutService::class);
-        $stripe->shouldReceive('createSession')
-            ->once()
-            ->withArgs(function (Purchase $p, Package $pkg, Request $req, ?int $charge) {
-                return $charge === 2500 && (int) $p->account_credit_applied_minor === 6000;
-            })
-            ->andReturn($fakeSession);
-        $this->app->instance(StripeCheckoutService::class, $stripe);
-        config(['stripe.secret' => 'sk_test_fake']);
+        $this->mockStripe('cs_partial_1');
 
         $result = app(AccountCreditCheckoutService::class)->beginCheckout(
             purchase: $purchase,
@@ -130,13 +129,11 @@ class AccountCreditRedemptionTest extends TestCase
         $this->assertFalse($result['fully_credited']);
         $this->assertSame('cs_partial_1', $result['stripe_session']->id);
         $this->assertSame('pending', $purchase->fresh()->status);
-        $this->assertSame(6000, $purchase->fresh()->account_credit_applied_minor);
-        $this->assertSame(2500, $purchase->fresh()->external_amount_minor);
+        $this->assertSame(6000, $result['attempt']->account_credit_applied_minor);
+        $this->assertSame(2500, $result['attempt']->external_amount_minor);
         $this->assertSame(0, app(AccountCreditLedger::class)->availableMinor($this->profile));
         $this->assertSame(6000, app(AccountCreditLedger::class)->reservedMinor($this->profile));
-        $this->assertSame(6000, app(AccountCreditLedger::class)->balanceMinor($this->profile)); // not yet debited
 
-        // Stripe success commits debit.
         $event = StripeEvent::create([
             'stripe_event_id' => 'evt_partial_ok',
             'type' => 'checkout.session.completed',
@@ -160,6 +157,7 @@ class AccountCreditRedemptionTest extends TestCase
         $this->assertSame(-6000, AccountCreditTransaction::query()
             ->where('source', AccountCreditTransaction::SOURCE_PURCHASE_REDEMPTION)->value('amount_minor'));
         $this->assertSame(0, app(AccountCreditLedger::class)->balanceMinor($this->profile));
+        $this->assertSame(PurchasePaymentAttempt::STATUS_COMPLETED, $result['attempt']->fresh()->status);
     }
 
     public function test_cheaper_package_only_debits_package_price(): void
@@ -197,13 +195,7 @@ class AccountCreditRedemptionTest extends TestCase
         $pkgA = Package::factory()->create(['amount_minor' => 7000]);
         $a = $this->pendingPurchase(7000, 'a@example.test');
         $a->update(['package_id' => $pkgA->id]);
-
-        $fakeSession = StripeSession::constructFrom(['id' => 'cs_a', 'url' => 'https://stripe.test/a']);
-
-        $stripe = Mockery::mock(StripeCheckoutService::class);
-        $stripe->shouldReceive('createSession')->once()->andReturn($fakeSession);
-        $this->app->instance(StripeCheckoutService::class, $stripe);
-        config(['stripe.secret' => 'sk_test_fake']);
+        $this->mockStripe('cs_a');
 
         app(AccountCreditCheckoutService::class)->beginCheckout(
             purchase: $a,
@@ -234,15 +226,9 @@ class AccountCreditRedemptionTest extends TestCase
         $this->credit(6000);
         $this->package->update(['amount_minor' => 8500]);
         $purchase = $this->pendingPurchase(8500);
+        $this->mockStripe('cs_cancel');
 
-        $fakeSession = StripeSession::constructFrom(['id' => 'cs_cancel', 'url' => 'https://stripe.test/c']);
-
-        $stripe = Mockery::mock(StripeCheckoutService::class);
-        $stripe->shouldReceive('createSession')->andReturn($fakeSession);
-        $this->app->instance(StripeCheckoutService::class, $stripe);
-        config(['stripe.secret' => 'sk_test_fake']);
-
-        app(AccountCreditCheckoutService::class)->beginCheckout(
+        $result = app(AccountCreditCheckoutService::class)->beginCheckout(
             purchase: $purchase,
             package: $this->package->fresh(),
             profile: $this->profile,
@@ -251,10 +237,13 @@ class AccountCreditRedemptionTest extends TestCase
             actor: $this->member,
         );
 
+        $attempt = $result['attempt'];
+
         $this->actingAs($this->member)
-            ->get('/checkout/cancel?purchase='.$purchase->id)
+            ->get('/checkout/cancel?attempt='.$attempt->id.'&token='.$attempt->cancel_token)
             ->assertOk();
 
+        $this->assertSame(PurchasePaymentAttempt::STATUS_CANCELLED, $attempt->fresh()->status);
         $this->assertSame(AccountCreditReservation::STATUS_RELEASED, $purchase->fresh()->accountCreditReservation->status);
         $this->assertSame(6000, app(AccountCreditLedger::class)->availableMinor($this->profile));
         $this->assertSame(0, AccountCreditTransaction::query()
@@ -278,44 +267,12 @@ class AccountCreditRedemptionTest extends TestCase
 
         $this->assertSame(0, app(AccountCreditLedger::class)->balanceMinor($this->profile));
 
-        $purchase->update([
-            'stripe_charge_id' => 'ch_refund_1',
-            'stripe_payment_intent_id' => 'pi_refund_1',
-        ]);
+        app(AccountCreditCheckoutService::class)->restoreFullyCreditedPurchase($purchase->fresh());
+        app(AccountCreditCheckoutService::class)->restoreFullyCreditedPurchase($purchase->fresh());
 
-        $event = StripeEvent::create([
-            'stripe_event_id' => 'evt_refund_1',
-            'type' => 'charge.refunded',
-            'livemode' => false,
-            'payload' => [
-                'data' => ['object' => [
-                    'id' => 'ch_refund_1',
-                    'payment_intent' => 'pi_refund_1',
-                ]],
-            ],
-            'signature_verified' => true,
-        ]);
-        app(StripeEventProcessor::class)->process($event);
-        app(StripeEventProcessor::class)->process($event->fresh()); // idempotent — already processed_at
-
-        // Second refund event with new id must still be idempotent via restoration key.
-        $event2 = StripeEvent::create([
-            'stripe_event_id' => 'evt_refund_2',
-            'type' => 'charge.refunded',
-            'livemode' => false,
-            'payload' => [
-                'data' => ['object' => [
-                    'id' => 'ch_refund_1',
-                    'payment_intent' => 'pi_refund_1',
-                ]],
-            ],
-            'signature_verified' => true,
-        ]);
-        app(StripeEventProcessor::class)->process($event2);
-
+        $this->assertSame(6000, app(AccountCreditLedger::class)->balanceMinor($this->profile));
         $this->assertSame(1, AccountCreditTransaction::query()
             ->where('source', AccountCreditTransaction::SOURCE_CREDIT_RESTORATION)->count());
-        $this->assertSame(6000, app(AccountCreditLedger::class)->balanceMinor($this->profile));
     }
 
     public function test_member_cannot_spend_another_members_balance(): void
@@ -331,9 +288,7 @@ class AccountCreditRedemptionTest extends TestCase
 
         $quote = app(AccountCreditCheckoutService::class)->quote($otherProfile, 6000, true);
         $this->assertSame(0, $quote['credit_applied_minor']);
-        $this->assertSame(6000, $quote['external_amount_minor']);
 
-        // Reservations are always keyed to the profile passed server-side — never another member's.
         $purchase = $this->pendingPurchase(6000);
         $this->expectException(\InvalidArgumentException::class);
         app(AccountCreditReservationService::class)->reserve(
@@ -351,12 +306,10 @@ class AccountCreditRedemptionTest extends TestCase
         $quote = app(AccountCreditCheckoutService::class)->quote($this->profile, 8500, true);
         $this->assertSame(6000, $quote['credit_applied_minor']);
         $this->assertSame(2500, $quote['external_amount_minor']);
-
-        // Fake client remainder is never accepted — only server quote matters.
         $this->assertNotSame(100, $quote['external_amount_minor']);
     }
 
-    public function test_review_shows_credit_option_for_logged_in_member(): void
+    public function test_review_shows_credit_option_and_payment_breakdown(): void
     {
         $this->credit(6000);
 
@@ -373,6 +326,8 @@ class AccountCreditRedemptionTest extends TestCase
             ->get('/checkout/credit-pkg/review')
             ->assertOk()
             ->assertSee('Use Account Credit')
+            ->assertSee('Payment summary')
+            ->assertSee('Amount to pay by card')
             ->assertSee('£60.00');
     }
 

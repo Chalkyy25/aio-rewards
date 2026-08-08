@@ -48,7 +48,7 @@ class OrderFulfilmentService
         AuditLogger::record('order.payment_received', $purchase, before: $before);
     }
 
-    public function transition(Purchase $purchase, OrderStatus $to, ?User $actor = null): void
+    public function transition(Purchase $purchase, OrderStatus $to, ?User $actor = null, bool $restoreCredit = true): void
     {
         $from = (string) $purchase->fulfilment_status;
         if ($from === $to->value) {
@@ -88,13 +88,13 @@ class OrderFulfilmentService
             actor: $actor,
         );
 
-        // Restore Account Credit spent on this purchase (idempotent).
-        if ($to === OrderStatus::Refunded) {
+        // Admin/ops refund path: restore AC for full clawback when caller requests it.
+        // Stripe webhooks pass restoreCredit=false and apply amount-aware restoration themselves.
+        if ($to === OrderStatus::Refunded && $restoreCredit) {
             try {
                 App::make(AccountCreditCheckoutService::class)
-                    ->restoreAfterRefund($purchase, $actor);
+                    ->restoreFullyCreditedPurchase($purchase, $actor);
             } catch (\Throwable $e) {
-                // Do not block the fulfilment transition; ledger restore can be retried.
                 report($e);
             }
         }

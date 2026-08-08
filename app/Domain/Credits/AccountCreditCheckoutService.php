@@ -2,6 +2,7 @@
 
 namespace App\Domain\Credits;
 
+use App\Domain\Billing\PurchasePaymentAttemptService;
 use App\Domain\Billing\StripeCheckoutService;
 use App\Domain\Fulfilment\OrderFulfilmentService;
 use App\Domain\Notifications\BuyerOrderNotifier;
@@ -11,6 +12,7 @@ use App\Models\AccountCreditTransaction;
 use App\Models\AmbassadorProfile;
 use App\Models\Package;
 use App\Models\Purchase;
+use App\Models\PurchasePaymentAttempt;
 use App\Models\User;
 use App\Notifications\AdminOrderReceivedNotification;
 use App\Support\Audit\AuditLogger;
@@ -26,12 +28,14 @@ use Stripe\Checkout\Session as StripeSession;
  * Purchase + Stripe checkout architecture.
  *
  * All money math is server-side. Client may only opt in/out of using credit.
+ * Each Stripe session is bound to an immutable PurchasePaymentAttempt.
  */
 class AccountCreditCheckoutService
 {
     public function __construct(
         private readonly AccountCreditLedger $ledger,
         private readonly AccountCreditReservationService $reservations,
+        private readonly PurchasePaymentAttemptService $attempts,
         private readonly StripeCheckoutService $stripe,
         private readonly OrderFulfilmentService $fulfilment,
         private readonly ConversionService $conversions,
@@ -39,8 +43,6 @@ class AccountCreditCheckoutService
     ) {}
 
     /**
-     * Server-calculated credit application for a package price.
-     *
      * @return array{credit_applied_minor: int, external_amount_minor: int, available_minor: int}
      */
     public function quote(AmbassadorProfile $profile, int $packageAmountMinor, bool $useCredit): array
@@ -64,41 +66,61 @@ class AccountCreditCheckoutService
     }
 
     /**
-     * Start checkout: optionally reserve credit, then either complete fully on credit
-     * or create a Stripe session for the remainder.
-     *
-     * @return array{purchase: Purchase, stripe_session: ?StripeSession, fully_credited: bool}
+     * @return array{purchase: Purchase, stripe_session: ?StripeSession, fully_credited: bool, attempt: ?PurchasePaymentAttempt}
      */
     public function beginCheckout(
         Purchase $purchase,
         Package $package,
-        AmbassadorProfile $profile,
+        ?AmbassadorProfile $profile,
         bool $useCredit,
         Request $request,
         ?User $actor = null,
     ): array {
-        // Never trust client money figures — recompute from package + available balance.
-        $quote = $this->quote($profile, (int) $package->amount_minor, $useCredit);
+        $packageAmount = (int) $package->amount_minor;
+
+        if ($useCredit && $profile) {
+            $quote = $this->quote($profile, $packageAmount, true);
+        } else {
+            $quote = [
+                'credit_applied_minor' => 0,
+                'external_amount_minor' => $packageAmount,
+                'available_minor' => 0,
+            ];
+        }
+
         $creditApplied = $quote['credit_applied_minor'];
         $external = $quote['external_amount_minor'];
 
-        return DB::transaction(function () use ($purchase, $package, $profile, $creditApplied, $external, $request, $actor) {
+        return DB::transaction(function () use (
+            $purchase,
+            $package,
+            $profile,
+            $creditApplied,
+            $external,
+            $packageAmount,
+            $request,
+            $actor,
+        ) {
             /** @var Purchase $locked */
             $locked = Purchase::query()->whereKey($purchase->id)->lockForUpdate()->firstOrFail();
             if ($locked->status !== 'pending') {
                 throw new InvalidArgumentException('Purchase is not pending.');
             }
 
-            // Ensure package price is authoritative.
-            if ((int) $locked->amount_minor !== (int) $package->amount_minor) {
-                $locked->amount_minor = (int) $package->amount_minor;
-            }
+            // Invalidate any live Stripe sessions / reservations before new terms.
+            $this->attempts->invalidateOpenAttempts($locked, $actor, 'payment_mix_changed');
+            $locked->refresh();
 
-            $locked->account_credit_applied_minor = $creditApplied;
-            $locked->external_amount_minor = $external;
-            $locked->save();
+            $locked->forceFill([
+                'amount_minor' => $packageAmount,
+                'account_credit_applied_minor' => $creditApplied,
+                'external_amount_minor' => $external,
+            ])->save();
 
             if ($creditApplied > 0) {
+                if (! $profile) {
+                    throw new InvalidArgumentException('Account Credit requires an authenticated Rewards Member.');
+                }
                 $this->reservations->reserve(
                     profile: $profile,
                     purchase: $locked,
@@ -115,6 +137,7 @@ class AccountCreditCheckoutService
                     'purchase' => $locked->fresh(),
                     'stripe_session' => null,
                     'fully_credited' => true,
+                    'attempt' => null,
                 ];
             }
 
@@ -125,21 +148,27 @@ class AccountCreditCheckoutService
                 throw new RuntimeException('Stripe is not configured on this environment.');
             }
 
-            $session = $this->stripe->createSession($locked, $package, $request, $external);
-            $locked->update(['stripe_session_id' => $session->id]);
+            $attempt = $this->attempts->openAttempt(
+                purchase: $locked,
+                packageAmountMinor: $packageAmount,
+                creditAppliedMinor: $creditApplied,
+                externalAmountMinor: $external,
+                currency: $locked->currency,
+            );
+
+            $session = $this->stripe->createSession($locked, $package, $request, $attempt);
+            $this->attempts->attachStripeSession($attempt, $session->id);
 
             return [
                 'purchase' => $locked->fresh(),
                 'stripe_session' => $session,
                 'fully_credited' => false,
+                'attempt' => $attempt->fresh(),
             ];
         }, attempts: 3);
     }
 
-    /**
-     * Full Account Credit purchase — no Stripe.
-     */
-    public function completeFullyCredited(Purchase $purchase, AmbassadorProfile $profile, ?User $actor = null): void
+    public function completeFullyCredited(Purchase $purchase, ?AmbassadorProfile $profile, ?User $actor = null): void
     {
         DB::transaction(function () use ($purchase, $profile, $actor) {
             /** @var Purchase $locked */
@@ -155,10 +184,12 @@ class AccountCreditCheckoutService
             if ($applied <= 0 || (int) $locked->external_amount_minor !== 0) {
                 throw new InvalidArgumentException('Purchase is not fully Account-Credit funded.');
             }
+            if (! $profile) {
+                throw new InvalidArgumentException('Missing member profile for Account Credit completion.');
+            }
 
             $reservation = $locked->accountCreditReservation;
             if (! $reservation || $reservation->status !== AccountCreditReservation::STATUS_PENDING) {
-                // Ensure a reservation exists then commit.
                 $reservation = $this->reservations->reserve(
                     profile: $profile,
                     purchase: $locked,
@@ -193,52 +224,66 @@ class AccountCreditCheckoutService
     }
 
     /**
-     * After Stripe success: verify charged amount, commit reservation, mark paid.
-     * Called from StripeEventProcessor (idempotent).
+     * Complete purchase from a verified payment attempt after Stripe success.
      */
-    public function completeAfterStripe(Purchase $purchase, int $stripeAmountTotalMinor, ?User $actor = null): void
-    {
-        DB::transaction(function () use ($purchase, $stripeAmountTotalMinor, $actor) {
+    public function completeFromAttempt(
+        PurchasePaymentAttempt $attempt,
+        int $stripeAmountTotalMinor,
+        ?string $paymentIntentId = null,
+        ?string $sessionId = null,
+        ?User $actor = null,
+    ): void {
+        DB::transaction(function () use ($attempt, $stripeAmountTotalMinor, $paymentIntentId, $sessionId, $actor) {
+            /** @var PurchasePaymentAttempt $lockedAttempt */
+            $lockedAttempt = PurchasePaymentAttempt::query()->whereKey($attempt->id)->lockForUpdate()->firstOrFail();
+
+            $this->attempts->assertOpenAndAmountMatches($lockedAttempt, $stripeAmountTotalMinor);
+
             /** @var Purchase $locked */
-            $locked = Purchase::query()->whereKey($purchase->id)->lockForUpdate()->firstOrFail();
+            $locked = Purchase::query()->whereKey($lockedAttempt->purchase_id)->lockForUpdate()->firstOrFail();
 
             if ($locked->status === 'paid') {
-                // Still ensure reservation is committed if credit was applied.
-                $this->ensureReservationCommitted($locked, $actor);
+                if ($lockedAttempt->status === PurchasePaymentAttempt::STATUS_OPEN) {
+                    $this->attempts->markCompleted($lockedAttempt);
+                }
+                $this->ensureReservationCommittedForAttempt($locked, $lockedAttempt, $actor);
 
                 return;
             }
 
             if ($locked->status !== 'pending') {
-                return;
+                throw new RuntimeException('Purchase is not pending and cannot be settled by this attempt.');
             }
 
-            $expectedExternal = $locked->external_amount_minor;
-            if ($expectedExternal === null) {
-                $expectedExternal = max(0, (int) $locked->amount_minor - (int) $locked->account_credit_applied_minor);
+            if ($lockedAttempt->status === PurchasePaymentAttempt::STATUS_OPEN) {
+                // Align purchase columns to the immutable attempt snapshot before commit.
+                $locked->forceFill([
+                    'amount_minor' => $lockedAttempt->package_amount_minor,
+                    'account_credit_applied_minor' => $lockedAttempt->account_credit_applied_minor,
+                    'external_amount_minor' => $lockedAttempt->external_amount_minor,
+                    'stripe_session_id' => $sessionId ?? $lockedAttempt->stripe_session_id,
+                    'stripe_payment_intent_id' => $paymentIntentId ?? $locked->stripe_payment_intent_id,
+                    'active_payment_attempt_id' => $lockedAttempt->id,
+                ])->save();
+
+                $this->ensureReservationCommittedForAttempt($locked, $lockedAttempt, $actor);
+
+                $locked->update([
+                    'status' => 'paid',
+                    'paid_at' => $locked->paid_at ?? now(),
+                ]);
+
+                $this->attempts->markCompleted($lockedAttempt);
             }
-
-            if ((int) $stripeAmountTotalMinor !== (int) $expectedExternal) {
-                throw new RuntimeException(sprintf(
-                    'Stripe amount mismatch for purchase %s: expected %d got %d',
-                    $locked->id,
-                    $expectedExternal,
-                    $stripeAmountTotalMinor,
-                ));
-            }
-
-            $this->ensureReservationCommitted($locked, $actor);
-
-            $locked->update([
-                'status' => 'paid',
-                'paid_at' => $locked->paid_at ?? now(),
-            ]);
         }, attempts: 3);
     }
 
-    private function ensureReservationCommitted(Purchase $purchase, ?User $actor): void
-    {
-        $applied = (int) $purchase->account_credit_applied_minor;
+    private function ensureReservationCommittedForAttempt(
+        Purchase $purchase,
+        PurchasePaymentAttempt $attempt,
+        ?User $actor,
+    ): void {
+        $applied = (int) $attempt->account_credit_applied_minor;
         if ($applied <= 0) {
             return;
         }
@@ -252,43 +297,104 @@ class AccountCreditCheckoutService
             return;
         }
 
+        if ((int) $reservation->amount_minor !== $applied) {
+            throw new RuntimeException('Reservation amount does not match payment attempt credit snapshot.');
+        }
+
         $this->reservations->commit($reservation, $actor);
     }
 
     /**
-     * Restore Account Credit after a refund — only the amount actually debited.
-     * Idempotent via credit_restoration:{purchaseId}.
+     * Amount-aware Account Credit restoration.
+     *
+     * Policy: Stripe refunds apply to the external (card) portion first.
+     * AC restoration = max(0, cumulative_external_refunded - external_paid),
+     * capped at AC actually spent, restored incrementally and idempotently.
+     *
+     * @return ?AccountCreditTransaction the delta restoration posted (if any)
      */
-    public function restoreAfterRefund(Purchase $purchase, ?User $actor = null): ?AccountCreditTransaction
+    public function restoreAfterExternalRefund(
+        Purchase $purchase,
+        int $cumulativeExternalRefundedMinor,
+        ?User $actor = null,
+    ): ?AccountCreditTransaction {
+        return DB::transaction(function () use ($purchase, $cumulativeExternalRefundedMinor, $actor) {
+            /** @var Purchase $locked */
+            $locked = Purchase::query()->whereKey($purchase->id)->lockForUpdate()->firstOrFail();
+
+            $debit = AccountCreditTransaction::query()
+                ->where('purchase_id', $locked->id)
+                ->where('source', AccountCreditTransaction::SOURCE_PURCHASE_REDEMPTION)
+                ->where('direction', AccountCreditTransaction::DIRECTION_DEBIT)
+                ->first();
+
+            if (! $debit) {
+                $this->reservations->releaseForPurchase($locked, $actor, 'refund_no_debit');
+                $locked->update([
+                    'external_refunded_minor' => max(
+                        (int) $locked->external_refunded_minor,
+                        $cumulativeExternalRefundedMinor,
+                    ),
+                ]);
+
+                return null;
+            }
+
+            $acSpent = abs((int) $debit->amount_minor);
+            $externalPaid = (int) ($locked->external_amount_minor ?? 0);
+            $alreadyRestored = (int) $locked->account_credit_restored_minor;
+
+            $cumulative = max((int) $locked->external_refunded_minor, $cumulativeExternalRefundedMinor);
+            $targetRestore = min($acSpent, max(0, $cumulative - $externalPaid));
+            $delta = $targetRestore - $alreadyRestored;
+
+            $locked->update(['external_refunded_minor' => $cumulative]);
+
+            if ($delta <= 0) {
+                return null;
+            }
+
+            $profile = AmbassadorProfile::query()->find($debit->ambassador_profile_id);
+            if (! $profile) {
+                throw new RuntimeException('Ambassador profile missing for credit restoration.');
+            }
+
+            $tx = $this->ledger->creditRestoration(
+                profile: $profile,
+                amountMinor: $delta,
+                currency: $debit->currency,
+                purchaseId: $locked->id,
+                actor: $actor,
+                idempotencyKey: 'credit_restoration:'.$locked->id.':to:'.$targetRestore,
+            );
+
+            $locked->update(['account_credit_restored_minor' => $targetRestore]);
+
+            return $tx;
+        }, attempts: 3);
+    }
+
+    /**
+     * Full AC-funded purchase: restore the full debit (idempotent).
+     */
+    public function restoreFullyCreditedPurchase(Purchase $purchase, ?User $actor = null): ?AccountCreditTransaction
     {
         $debit = AccountCreditTransaction::query()
             ->where('purchase_id', $purchase->id)
             ->where('source', AccountCreditTransaction::SOURCE_PURCHASE_REDEMPTION)
-            ->where('direction', AccountCreditTransaction::DIRECTION_DEBIT)
             ->first();
 
         if (! $debit) {
-            // No credit was spent — release any dangling reservation.
-            $this->reservations->releaseForPurchase($purchase, $actor, 'refund_no_debit');
-
             return null;
         }
 
-        $amount = abs((int) $debit->amount_minor);
-        if ($amount <= 0) {
-            return null;
-        }
+        $acSpent = abs((int) $debit->amount_minor);
+        $externalPaid = (int) ($purchase->external_amount_minor ?? 0);
 
-        $profile = AmbassadorProfile::query()->find($debit->ambassador_profile_id);
-        if (! $profile) {
-            throw new RuntimeException('Ambassador profile missing for credit restoration.');
-        }
-
-        return $this->ledger->creditRestoration(
-            profile: $profile,
-            amountMinor: $amount,
-            currency: $debit->currency,
-            purchaseId: $purchase->id,
+        // cumulative >= external + ac → full AC restoration under the allocation policy.
+        return $this->restoreAfterExternalRefund(
+            purchase: $purchase,
+            cumulativeExternalRefundedMinor: $externalPaid + $acSpent,
             actor: $actor,
         );
     }

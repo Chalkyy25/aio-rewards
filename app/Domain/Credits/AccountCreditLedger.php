@@ -268,6 +268,7 @@ class AccountCreditLedger
         string $purchaseId,
         ?User $actor = null,
         ?string $note = null,
+        ?string $idempotencyKey = null,
     ): AccountCreditTransaction {
         if ($amountMinor <= 0) {
             throw new InvalidArgumentException('Credit restoration amount must be positive.');
@@ -278,7 +279,7 @@ class AccountCreditLedger
             signedAmountMinor: $amountMinor,
             currency: $currency,
             source: AccountCreditTransaction::SOURCE_CREDIT_RESTORATION,
-            idempotencyKey: 'credit_restoration:'.$purchaseId,
+            idempotencyKey: $idempotencyKey ?? ('credit_restoration:'.$purchaseId),
             actor: $actor,
             purchaseId: $purchaseId,
             origin: $actor ? 'admin' : 'system',

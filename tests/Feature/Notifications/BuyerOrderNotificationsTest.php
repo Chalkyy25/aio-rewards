@@ -2,12 +2,14 @@
 
 namespace Tests\Feature\Notifications;
 
+use App\Domain\Billing\StripeEventProcessor;
 use App\Domain\Fulfilment\OrderFulfilmentService;
 use App\Domain\Fulfilment\OrderStatus;
 use App\Domain\Notifications\BuyerOrderNotifier;
 use App\Models\AuditLog;
 use App\Models\Package;
 use App\Models\Purchase;
+use App\Models\PurchasePaymentAttempt;
 use App\Models\StripeEvent;
 use App\Notifications\BuyerOrderCompletedNotification;
 use App\Notifications\BuyerPaymentReceivedNotification;
@@ -38,16 +40,38 @@ class BuyerOrderNotificationsTest extends TestCase
             'fulfilment_status' => 'unfulfilled',
             'buyer_email' => 'buyer@example.com',
             'buyer_name' => 'Alex Buyer',
+            'amount_minor' => 6000,
+            'external_amount_minor' => 6000,
+            'account_credit_applied_minor' => 0,
+        ]);
+        $attempt = PurchasePaymentAttempt::create([
+            'purchase_id' => $purchase->id,
+            'stripe_session_id' => 'cs_email_p1',
+            'cancel_token' => PurchasePaymentAttempt::makeCancelToken(),
+            'package_amount_minor' => 6000,
+            'account_credit_applied_minor' => 0,
+            'external_amount_minor' => 6000,
+            'currency' => 'gbp',
+            'status' => PurchasePaymentAttempt::STATUS_OPEN,
+        ]);
+        $purchase->update([
+            'stripe_session_id' => 'cs_email_p1',
+            'active_payment_attempt_id' => $attempt->id,
         ]);
 
         $event = StripeEvent::create([
             'stripe_event_id' => 'evt_email_p1',
             'type' => 'checkout.session.completed',
             'livemode' => false,
-            'payload' => ['data' => ['object' => ['client_reference_id' => $purchase->id]]],
+            'payload' => ['data' => ['object' => [
+                'id' => 'cs_email_p1',
+                'client_reference_id' => $purchase->id,
+                'payment_intent' => 'pi_email_p1',
+                'amount_total' => 6000,
+            ]]],
             'signature_verified' => true,
         ]);
-        app(\App\Domain\Billing\StripeEventProcessor::class)->process($event);
+        app(StripeEventProcessor::class)->process($event);
 
         Notification::assertSentOnDemand(
             BuyerPaymentReceivedNotification::class,

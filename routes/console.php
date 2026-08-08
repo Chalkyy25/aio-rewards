@@ -34,3 +34,10 @@ Schedule::command('aio:ops-remind')
     ->withoutOverlapping()
     ->onOneServer()
     ->name('ops.reminders');
+
+// Release Account Credit soft-holds whose Stripe checkout window has elapsed.
+Schedule::command('aio:expire-account-credit-reservations')
+    ->everyFiveMinutes()
+    ->withoutOverlapping()
+    ->onOneServer()
+    ->name('credits.expire-reservations');

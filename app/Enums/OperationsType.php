@@ -43,7 +43,7 @@ enum OperationsType: string
             self::OrderInProgressTooLong => 'Order in progress too long',
             self::OrderCredentialsUnopened => 'Completed credentials not opened by customer',
             self::ReferralConversionAwaitingApproval => 'Referral conversion awaiting approval',
-            self::RewardAwaitingApproval => 'Reward awaiting approval',
+            self::RewardAwaitingApproval => 'Reward claim awaiting approval',
             self::RewardApprovedAwaitingPayment => 'Approved reward awaiting payment',
             self::ProviderVerificationFailure => 'Provider verification failure',
             self::RefundRequest => 'Refund request',
@@ -66,14 +66,14 @@ enum OperationsType: string
             self::OrderWaiting30,
             self::OrderInProgressTooLong,
             self::FailedJob,
-            self::FailedNotification => OperationsPriority::High,
+            self::FailedNotification,
+            self::RewardApprovedAwaitingPayment => OperationsPriority::High,
 
             self::OrderPaidAwaitingFulfilment,
             self::OrderPaidUnviewed,
             self::OrderWaiting15,
             self::ReferralConversionAwaitingApproval,
-            self::RewardAwaitingApproval,
-            self::RewardApprovedAwaitingPayment => OperationsPriority::Medium,
+            self::RewardAwaitingApproval => OperationsPriority::Medium,
 
             self::OrderCredentialsUnopened => OperationsPriority::Low,
         };

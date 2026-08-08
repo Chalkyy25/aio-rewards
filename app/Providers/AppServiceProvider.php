@@ -2,10 +2,14 @@
 
 namespace App\Providers;
 
+use App\Domain\Payouts\NotifyMissingPayoutMethod;
+use App\Domain\Rewards\Events\RewardApproved;
 use App\Listeners\SendAmbassadorWelcomeAfterVerified;
 use App\Models\AmbassadorProfile;
+use App\Models\MemberPayoutProfile;
 use App\Models\ReferralClick;
 use App\Policies\AmbassadorProfilePolicy;
+use App\Policies\MemberPayoutProfilePolicy;
 use App\Policies\ReferralClickPolicy;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Support\Facades\Event;
@@ -33,11 +37,16 @@ class AppServiceProvider extends ServiceProvider
         }
 
         Gate::policy(AmbassadorProfile::class, AmbassadorProfilePolicy::class);
+        Gate::policy(MemberPayoutProfile::class, MemberPayoutProfilePolicy::class);
         Gate::policy(ReferralClick::class, ReferralClickPolicy::class);
 
         // Send the welcome email exactly once, AFTER Laravel's own email
         // verification has succeeded. See SendAmbassadorWelcomeAfterVerified
         // for the idempotency guarantees.
         Event::listen(Verified::class, SendAmbassadorWelcomeAfterVerified::class);
+
+        // Prompt Rewards Members (once) when a reward is approved but they
+        // have not configured a payout destination yet.
+        Event::listen(RewardApproved::class, NotifyMissingPayoutMethod::class);
     }
 }

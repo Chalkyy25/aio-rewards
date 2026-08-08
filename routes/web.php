@@ -101,4 +101,5 @@ Route::middleware(['auth', 'verified'])->prefix('ambassador')->name('ambassador.
     Route::get('/rewards/history', [RewardHistoryController::class, 'show'])->name('rewards.history');
     Route::get('/referrals', [MyReferralsController::class, 'show'])->name('referrals');
     Route::get('/security', \App\Livewire\AmbassadorSecurity::class)->name('security');
+    Route::get('/payout-settings', \App\Livewire\AmbassadorPayoutSettings::class)->name('payout-settings');
 });

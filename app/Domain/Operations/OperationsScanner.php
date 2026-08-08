@@ -4,6 +4,8 @@ namespace App\Domain\Operations;
 
 use App\Domain\Fulfilment\OrderStatus;
 use App\Domain\Settings\SettingsRepository;
+use App\Enums\OperationsPriority;
+use App\Enums\OperationsStatus;
 use App\Enums\OperationsType;
 use App\Models\OperationsItem;
 use App\Models\Purchase;
@@ -41,7 +43,7 @@ class OperationsScanner
 
         $stats = ['created' => 0, 'updated' => 0, 'auto_resolved' => 0, 'by_type' => []];
 
-        $before = OperationsItem::query()->whereIn('status', \App\Enums\OperationsStatus::openValues())->pluck('id')->all();
+        $before = OperationsItem::query()->whereIn('status', OperationsStatus::openValues())->pluck('id')->all();
         $touched = [];
 
         foreach ($this->detectors() as $type => $iterable) {
@@ -237,42 +239,139 @@ class OperationsScanner
         }
     }
 
-    /** @return iterable<OperationsSpec> */
+    /**
+     * Stale milestone claims still pending approval past the configured
+     * day threshold (default 7). Observes Reward state only.
+     *
+     * @return iterable<OperationsSpec>
+     */
     private function detectRewardAwaitingApproval(): iterable
     {
-        foreach (Reward::query()->where('status', 'pending_approval')->get() as $r) {
+        $days = max(1, (int) $this->threshold('ops.reward.claim_awaiting_approval_days', 7));
+        $threshold = now()->subDays($days);
+
+        $q = Reward::query()
+            ->with(['ambassadorProfile.user', 'tier'])
+            ->where('status', 'pending_approval')
+            ->where('created_at', '<=', $threshold)
+            ->get();
+
+        foreach ($q as $r) {
+            $profile = $r->ambassadorProfile;
+            $member = $profile?->user;
+            if ($profile === null || $member === null) {
+                continue; // orphaned / deleted member — skip
+            }
+
+            $meta = $this->rewardOpsMeta($r, claimedAt: $r->created_at, approvedAt: null);
+            $outstanding = $r->created_at ? (int) $r->created_at->diffInDays(now()) : $days;
+
             yield new OperationsSpec(
                 type: OperationsType::RewardAwaitingApproval,
-                dedupeKey: 'rewards.awaiting_approval:'.$r->id,
-                title: 'Reward #'.$r->id.' awaiting approval',
-                summary: 'Amount: '.number_format($r->amount_minor / 100, 2).' '.strtoupper($r->currency ?? 'gbp'),
+                dedupeKey: 'reward-claim-awaiting-approval:'.$r->id,
+                title: 'Reward claim #'.$r->id.' awaiting approval for '.$outstanding.'+ days',
+                summary: ($meta['member_name'] ?? 'Rewards Member').' — '.$r->amountFormatted()
+                    .' (threshold '.($meta['milestone_threshold'] ?? '?').')'
+                    .' · claimed '.optional($r->created_at)->diffForHumans(),
+                priority: OperationsPriority::Medium,
                 subject: $r,
+                dueAt: $r->created_at?->copy()->addDays($days),
+                meta: array_merge($meta, [
+                    'threshold_days' => $days,
+                    'outstanding_days' => $outstanding,
+                ]),
             );
         }
     }
 
-    /** @return iterable<OperationsSpec> */
+    /**
+     * Approved rewards still unpaid past the configured hour threshold
+     * (default 72). Initial priority High; EscalationSweeper may raise further.
+     *
+     * @return iterable<OperationsSpec>
+     */
     private function detectApprovedRewardAwaitingPayment(): iterable
     {
-        $hours = (int) $this->threshold('ops.reward.approved_unpaid_hours', 72);
+        $hours = max(1, (int) $this->threshold('ops.reward.approved_unpaid_hours', 72));
         $threshold = now()->subHours($hours);
 
         $q = Reward::query()
+            ->with(['ambassadorProfile.user', 'ambassadorProfile.payoutProfile', 'tier'])
             ->where('status', 'approved')
             ->whereNull('paid_at')
+            ->whereNotNull('approved_at')
             ->where('approved_at', '<=', $threshold)
             ->get();
 
         foreach ($q as $r) {
+            $profile = $r->ambassadorProfile;
+            $member = $profile?->user;
+            if ($profile === null || $member === null) {
+                continue;
+            }
+
+            $meta = $this->rewardOpsMeta($r, claimedAt: $r->created_at, approvedAt: $r->approved_at);
+            $outstandingHours = $r->approved_at ? (int) $r->approved_at->diffInHours(now()) : $hours;
+
+            // Safe operational flags only — never bank/PayPal secrets.
+            $configured = (bool) $profile->hasConfiguredPayoutMethod();
+            $method = $profile->payoutProfile?->preferred_method?->value;
+
             yield new OperationsSpec(
                 type: OperationsType::RewardApprovedAwaitingPayment,
-                dedupeKey: 'rewards.approved_awaiting_payment:'.$r->id,
-                title: 'Reward #'.$r->id.' approved but unpaid for '.$hours.'+ hours',
-                summary: 'Approved '.optional($r->approved_at)->diffForHumans().'. Please pay out.',
+                dedupeKey: 'reward-approved-awaiting-payment:'.$r->id,
+                title: 'Reward #'.$r->id.' approved but unpaid for '.$outstandingHours.'+ hours',
+                summary: ($meta['member_name'] ?? 'Rewards Member').' — '.$r->amountFormatted()
+                    .' · approved '.optional($r->approved_at)->diffForHumans().'. Please pay out.',
+                priority: OperationsPriority::High,
                 subject: $r,
-                meta: ['threshold_hours' => $hours],
+                dueAt: $r->approved_at?->copy()->addHours($hours),
+                meta: array_merge($meta, [
+                    'threshold_hours' => $hours,
+                    'outstanding_hours' => $outstandingHours,
+                    'payout_configured' => $configured,
+                    'preferred_payout_method' => $method,
+                ]),
             );
         }
+    }
+
+    /**
+     * Safe admin context for reward Operations items. Never includes buyer
+     * PII, provider credentials, payment secrets, or raw audit payloads.
+     *
+     * @return array<string, mixed>
+     */
+    private function rewardOpsMeta(Reward $r, ?\DateTimeInterface $claimedAt, ?\DateTimeInterface $approvedAt): array
+    {
+        $profile = $r->ambassadorProfile;
+        $snapshot = is_array($r->tier_snapshot) ? $r->tier_snapshot : [];
+        $threshold = $snapshot['threshold'] ?? $r->tier?->threshold ?? $r->milestone_index;
+        $bonusMinor = (int) ($snapshot['bonus_amount_minor'] ?? $r->tier?->bonus_amount_minor ?? 0);
+        $tierTitle = $snapshot['title'] ?? $r->tier?->title;
+
+        return [
+            'member_name' => $profile?->user?->name,
+            'member_id' => $profile?->id,
+            'reward_id' => $r->id,
+            'reward_status' => $r->status,
+            'milestone_tier_id' => $r->milestone_tier_id,
+            'milestone_tier_title' => $tierTitle,
+            'milestone_threshold' => $threshold,
+            'amount_minor' => $r->amount_minor,
+            'amount_formatted' => $r->amountFormatted(),
+            'bonus_amount_minor' => $bonusMinor,
+            'bonus_amount_formatted' => '£'.number_format($bonusMinor / 100, 2),
+            'currency' => $r->currency,
+            'claimed_at' => $claimedAt instanceof \DateTimeInterface
+                ? Carbon::parse($claimedAt)->toIso8601String()
+                : null,
+            'approved_at' => $approvedAt instanceof \DateTimeInterface
+                ? Carbon::parse($approvedAt)->toIso8601String()
+                : null,
+            'reward_admin_path' => '/admin/rewards/'.$r->id,
+            'member_admin_path' => $profile ? '/admin/ambassadors/'.$profile->id : null,
+        ];
     }
 
     /** @return iterable<OperationsSpec> */
@@ -340,7 +439,7 @@ class OperationsScanner
 
         // 1) Order-lifecycle items: any Purchase that is Completed/Cancelled/Refunded should not have open order.* items.
         $open = OperationsItem::query()
-            ->whereIn('status', \App\Enums\OperationsStatus::openValues())
+            ->whereIn('status', OperationsStatus::openValues())
             ->where('subject_type', (new Purchase)->getMorphClass())
             ->where(function ($q) {
                 $q->where('type', 'like', 'order.%');
@@ -374,7 +473,7 @@ class OperationsScanner
 
         // 2) Referral conversion approved/reversed → clear its item.
         $convItems = OperationsItem::query()
-            ->whereIn('status', \App\Enums\OperationsStatus::openValues())
+            ->whereIn('status', OperationsStatus::openValues())
             ->where('subject_type', (new ReferralConversion)->getMorphClass())
             ->where('type', OperationsType::ReferralConversionAwaitingApproval->value)
             ->get();
@@ -385,10 +484,12 @@ class OperationsScanner
             }
         }
 
-        // 3) Rewards: awaiting_approval clears when status leaves pending_approval;
-        //    approved_awaiting_payment clears when paid_at is set.
+        // 3) Rewards: claim-awaiting-approval clears when status leaves pending_approval
+        //    (approved / rejected / reversed). Approved-awaiting-payment clears when
+        //    paid, reversed, or otherwise no longer approved+unpaid.
+        //    Also supersede legacy dedupe keys so re-scans do not leave orphans.
         $rewardItems = OperationsItem::query()
-            ->whereIn('status', \App\Enums\OperationsStatus::openValues())
+            ->whereIn('status', OperationsStatus::openValues())
             ->where('subject_type', (new Reward)->getMorphClass())
             ->get();
         foreach ($rewardItems as $item) {
@@ -398,11 +499,31 @@ class OperationsScanner
 
                 continue;
             }
-            if ($item->type === OperationsType::RewardAwaitingApproval->value && $r->status !== 'pending_approval') {
-                $closed += $this->writer->autoResolve($item->dedupe_key, 'reward status: '.$r->status);
+
+            $canonicalClaimKey = 'reward-claim-awaiting-approval:'.$r->id;
+            $canonicalUnpaidKey = 'reward-approved-awaiting-payment:'.$r->id;
+
+            if ($item->type === OperationsType::RewardAwaitingApproval->value) {
+                if ($r->status !== 'pending_approval') {
+                    $closed += $this->writer->autoResolve($item->dedupe_key, 'reward status: '.$r->status);
+
+                    continue;
+                }
+                if ($item->dedupe_key !== $canonicalClaimKey) {
+                    $closed += $this->writer->autoResolve($item->dedupe_key, 'superseded dedupe key');
+                }
             }
-            if ($item->type === OperationsType::RewardApprovedAwaitingPayment->value && $r->paid_at !== null) {
-                $closed += $this->writer->autoResolve($item->dedupe_key, 'reward paid');
+
+            if ($item->type === OperationsType::RewardApprovedAwaitingPayment->value) {
+                if ($r->status !== 'approved' || $r->paid_at !== null) {
+                    $reason = $r->paid_at !== null ? 'reward paid' : 'reward status: '.$r->status;
+                    $closed += $this->writer->autoResolve($item->dedupe_key, $reason);
+
+                    continue;
+                }
+                if ($item->dedupe_key !== $canonicalUnpaidKey) {
+                    $closed += $this->writer->autoResolve($item->dedupe_key, 'superseded dedupe key');
+                }
             }
         }
 

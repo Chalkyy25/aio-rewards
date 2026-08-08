@@ -4,6 +4,7 @@ namespace App\Filament\Pages;
 
 use App\Domain\Settings\SettingsRepository;
 use App\Enums\Role as RoleEnum;
+use Filament\Actions\Action;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Concerns\InteractsWithForms;
@@ -13,6 +14,7 @@ use Filament\Pages\Page;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 
 class Settings extends Page implements HasForms
 {
@@ -52,6 +54,7 @@ class Settings extends Page implements HasForms
             'public' => 'Public page content',
             'orders' => 'Customer order messages',
             'notifications' => 'Notifications',
+            'ops' => 'Operations Centre',
         ];
 
         $sections = [];
@@ -62,11 +65,30 @@ class Settings extends Page implements HasForms
                     continue;
                 }
                 $flat = $this->flatKey($key);
-                $components[] = ($meta['textarea'] ?? false)
-                    ? Textarea::make($flat)->label($meta['label'])->rows(3)->maxLength(4000)
-                        ->helperText('Default: '.\Illuminate\Support\Str::limit((string) $meta['default'], 100))
-                    : TextInput::make($flat)->label($meta['label'])->maxLength(500)
-                        ->helperText('Default: '.\Illuminate\Support\Str::limit((string) $meta['default'], 100));
+                if ($meta['textarea'] ?? false) {
+                    $components[] = Textarea::make($flat)->label($meta['label'])->rows(3)->maxLength(4000)
+                        ->helperText('Default: '.Str::limit((string) $meta['default'], 100));
+                } elseif ($meta['integer'] ?? false) {
+                    $field = TextInput::make($flat)
+                        ->label($meta['label'])
+                        ->numeric()
+                        ->integer()
+                        ->required()
+                        ->helperText('Default: '.(string) $meta['default']);
+                    if (isset($meta['min'])) {
+                        $field->minValue((int) $meta['min']);
+                    }
+                    if (isset($meta['max'])) {
+                        $field->maxValue((int) $meta['max']);
+                    }
+                    $components[] = $field;
+                } else {
+                    $components[] = TextInput::make($flat)->label($meta['label'])->maxLength(500)
+                        ->helperText('Default: '.Str::limit((string) $meta['default'], 100));
+                }
+            }
+            if ($components === []) {
+                continue;
             }
             $sections[] = Section::make($title)->schema($components)->columns(1);
         }
@@ -91,7 +113,7 @@ class Settings extends Page implements HasForms
     protected function getFormActions(): array
     {
         return [
-            \Filament\Actions\Action::make('save')
+            Action::make('save')
                 ->label('Save changes')
                 ->submit('save'),
         ];

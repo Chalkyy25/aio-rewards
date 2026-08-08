@@ -25,7 +25,11 @@ return new class extends Migration
             // reward_fulfilment | purchase_redemption | admin_adjustment | reversal
             $t->string('source', 48);
             $t->foreignId('reward_id')->nullable()->constrained('rewards')->nullOnDelete();
-            $t->foreignId('purchase_id')->nullable()->constrained('purchases')->nullOnDelete();
+            $t->ulid('purchase_id')->nullable();
+            $t->foreign('purchase_id')
+                ->references('id')
+                ->on('purchases')
+                ->nullOnDelete();
             $t->foreignId('actor_user_id')->nullable()->constrained('users')->nullOnDelete();
             // system | admin | member
             $t->string('origin', 24)->default('system');

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\AmbassadorResource\RelationManagers;
 
+use App\Filament\Resources\RewardResource;
 use App\Models\Reward;
 use Filament\Actions\ViewAction;
 use Filament\Resources\RelationManagers\RelationManager;
@@ -12,7 +13,7 @@ use Filament\Tables\Table;
 
 /**
  * Read-only Rewards tab on the Rewards Member view page. Approval /
- * payment / rejection continue to go through {@see \App\Filament\Resources\RewardResource}
+ * payment / rejection continue to go through {@see RewardResource}
  * so all sensitive mutations are audited by the RewardsEngine /
  * MilestoneProgressionService.
  */
@@ -36,8 +37,8 @@ class RewardsRelationManager extends RelationManager
                 TextColumn::make('tier.title')->label('Milestone')->placeholder('—'),
                 TextColumn::make('milestone_index')->label('Threshold'),
                 TextColumn::make('cycle_number')->label('Cycle')->placeholder('—'),
-                TextColumn::make('amount_minor')->label('Amount')
-                    ->formatStateUsing(fn (Reward $r) => $r->amountFormatted()),
+                TextColumn::make('amount_minor')->label('Reward Value')
+                    ->formatStateUsing(fn (Reward $r) => $r->adminPayableAmountFormatted()),
                 TextColumn::make('status')->badge()
                     ->color(fn (Reward $r) => $r->statusColor())
                     ->formatStateUsing(fn (Reward $r) => $r->statusLabel()),
@@ -55,7 +56,7 @@ class RewardsRelationManager extends RelationManager
                 ]),
             ])
             ->headerActions([])
-            ->recordActions([ViewAction::make()->url(fn (Reward $r) => \App\Filament\Resources\RewardResource::getUrl('view', ['record' => $r]))])
+            ->recordActions([ViewAction::make()->url(fn (Reward $r) => RewardResource::getUrl('view', ['record' => $r]))])
             ->toolbarActions([]);
     }
 

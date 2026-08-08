@@ -178,8 +178,13 @@ class AmbassadorResource extends Resource
                 TextEntry::make('lifetime_paid')
                     ->label('Lifetime paid')
                     ->state(fn (AmbassadorProfile $r) => '£'.number_format(
-                        ((int) Reward::query()->where('ambassador_profile_id', $r->id)
-                            ->where('status', 'paid')->sum('amount_minor')) / 100, 2)),
+                        Reward::sumAdminPayableMinor(
+                            Reward::query()
+                                ->where('ambassador_profile_id', $r->id)
+                                ->where('status', 'paid')
+                        ) / 100,
+                        2
+                    )),
                 TextEntry::make('open_claim')
                     ->label('Open claim')
                     ->state(function (AmbassadorProfile $r) {
@@ -190,7 +195,7 @@ class AmbassadorResource extends Resource
                             return '—';
                         }
 
-                        return sprintf('%s (%s)', $open->amountFormatted(), $open->statusLabel());
+                        return sprintf('%s (%s)', $open->adminPayableAmountFormatted(), $open->statusLabel());
                     }),
             ])->columns(3),
         ]);

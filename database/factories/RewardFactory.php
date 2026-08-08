@@ -18,6 +18,7 @@ class RewardFactory extends Factory
             'reward_rule_id' => RewardRule::factory(),
             'milestone_index' => 1,
             'amount_minor' => 5000,
+            'account_credit_bonus_minor_snapshot' => 0,
             'currency' => 'gbp',
             'status' => 'pending_approval',
         ];

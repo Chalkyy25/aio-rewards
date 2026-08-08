@@ -3,14 +3,15 @@
 namespace Tests\Feature\Checkout;
 
 use App\Domain\Billing\StripeEventProcessor;
+use App\Jobs\ProcessStripeEventJob;
 use App\Models\AmbassadorProfile;
 use App\Models\Package;
 use App\Models\Purchase;
+use App\Models\PurchasePaymentAttempt;
 use App\Models\StripeEvent;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
-use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class StripeWebhookTest extends TestCase
@@ -53,7 +54,7 @@ class StripeWebhookTest extends TestCase
 
         $response->assertOk();
         $this->assertDatabaseHas('stripe_events', ['stripe_event_id' => 'evt_test_1']);
-        Queue::assertPushed(\App\Jobs\ProcessStripeEventJob::class);
+        Queue::assertPushed(ProcessStripeEventJob::class);
     }
 
     public function test_webhook_is_idempotent_for_duplicate_event_ids(): void
@@ -76,12 +77,29 @@ class StripeWebhookTest extends TestCase
 
     public function test_processor_marks_purchase_paid_on_checkout_completed(): void
     {
-        $package = Package::factory()->create();
+        $package = Package::factory()->create(['amount_minor' => 6000]);
         $purchase = Purchase::factory()->create([
             'package_id' => $package->id,
             'status' => 'pending',
-            'stripe_session_id' => 'cs_pre',
+            'amount_minor' => 6000,
+            'external_amount_minor' => 6000,
+            'account_credit_applied_minor' => 0,
         ]);
+        $attempt = PurchasePaymentAttempt::create([
+            'purchase_id' => $purchase->id,
+            'stripe_session_id' => 'cs_new',
+            'cancel_token' => PurchasePaymentAttempt::makeCancelToken(),
+            'package_amount_minor' => 6000,
+            'account_credit_applied_minor' => 0,
+            'external_amount_minor' => 6000,
+            'currency' => 'gbp',
+            'status' => PurchasePaymentAttempt::STATUS_OPEN,
+        ]);
+        $purchase->update([
+            'stripe_session_id' => 'cs_new',
+            'active_payment_attempt_id' => $attempt->id,
+        ]);
+
         $event = StripeEvent::create([
             'stripe_event_id' => 'evt_paid_1',
             'type' => 'checkout.session.completed',
@@ -92,6 +110,7 @@ class StripeWebhookTest extends TestCase
                         'id' => 'cs_new',
                         'client_reference_id' => $purchase->id,
                         'payment_intent' => 'pi_test_new',
+                        'amount_total' => 6000,
                     ],
                 ],
             ],
@@ -105,6 +124,7 @@ class StripeWebhookTest extends TestCase
         $this->assertSame('pi_test_new', $purchase->stripe_payment_intent_id);
         $this->assertNotNull($purchase->paid_at);
         $this->assertNotNull($event->fresh()->processed_at);
+        $this->assertSame(PurchasePaymentAttempt::STATUS_COMPLETED, $attempt->fresh()->status);
     }
 
     public function test_processor_is_idempotent_on_re_process(): void
@@ -137,6 +157,10 @@ class StripeWebhookTest extends TestCase
             'status' => 'paid',
             'stripe_charge_id' => 'ch_test_cb',
             'ambassador_profile_id_snapshot' => $amb->id,
+            'amount_minor' => 6000,
+            'external_amount_minor' => 6000,
+            'account_credit_applied_minor' => 0,
+            'fulfilment_status' => 'payment_received',
         ]);
         $event = StripeEvent::create([
             'stripe_event_id' => 'evt_cb',

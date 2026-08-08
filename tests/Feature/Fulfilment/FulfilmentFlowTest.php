@@ -2,11 +2,13 @@
 
 namespace Tests\Feature\Fulfilment;
 
+use App\Domain\Billing\StripeEventProcessor;
 use App\Domain\Fulfilment\OrderFulfilmentService;
 use App\Domain\Fulfilment\OrderStatus;
 use App\Models\AmbassadorProfile;
 use App\Models\Package;
 use App\Models\Purchase;
+use App\Models\PurchasePaymentAttempt;
 use App\Models\ReferralConversion;
 use App\Models\StripeEvent;
 use App\Notifications\AdminOrderReceivedNotification;
@@ -35,6 +37,23 @@ class FulfilmentFlowTest extends TestCase
             'package_id' => $package->id,
             'status' => 'pending',
             'fulfilment_status' => 'unfulfilled',
+            'amount_minor' => 6000,
+            'external_amount_minor' => 6000,
+            'account_credit_applied_minor' => 0,
+        ]);
+        $attempt = PurchasePaymentAttempt::create([
+            'purchase_id' => $purchase->id,
+            'stripe_session_id' => 'cs_paid',
+            'cancel_token' => PurchasePaymentAttempt::makeCancelToken(),
+            'package_amount_minor' => 6000,
+            'account_credit_applied_minor' => 0,
+            'external_amount_minor' => 6000,
+            'currency' => 'gbp',
+            'status' => PurchasePaymentAttempt::STATUS_OPEN,
+        ]);
+        $purchase->update([
+            'stripe_session_id' => 'cs_paid',
+            'active_payment_attempt_id' => $attempt->id,
         ]);
 
         $event = StripeEvent::create([
@@ -45,11 +64,12 @@ class FulfilmentFlowTest extends TestCase
                 'id' => 'cs_paid',
                 'client_reference_id' => $purchase->id,
                 'payment_intent' => 'pi_1',
+                'amount_total' => 6000,
             ]]],
             'signature_verified' => true,
         ]);
 
-        app(\App\Domain\Billing\StripeEventProcessor::class)->process($event);
+        app(StripeEventProcessor::class)->process($event);
 
         $purchase->refresh();
         $this->assertSame('paid', $purchase->status);
@@ -71,20 +91,42 @@ class FulfilmentFlowTest extends TestCase
             'package_id' => $package->id,
             'status' => 'pending',
             'fulfilment_status' => 'unfulfilled',
+            'amount_minor' => 6000,
+            'external_amount_minor' => 6000,
+            'account_credit_applied_minor' => 0,
             'ambassador_profile_id_snapshot' => $amb->id,
             'referral_code_snapshot' => $amb->referral_code,
             'attribution_id' => '01H000000000000000000ATTR1',
+        ]);
+        $attempt = PurchasePaymentAttempt::create([
+            'purchase_id' => $purchase->id,
+            'stripe_session_id' => 'cs_ref_p4',
+            'cancel_token' => PurchasePaymentAttempt::makeCancelToken(),
+            'package_amount_minor' => 6000,
+            'account_credit_applied_minor' => 0,
+            'external_amount_minor' => 6000,
+            'currency' => 'gbp',
+            'status' => PurchasePaymentAttempt::STATUS_OPEN,
+        ]);
+        $purchase->update([
+            'stripe_session_id' => 'cs_ref_p4',
+            'active_payment_attempt_id' => $attempt->id,
         ]);
 
         $event = StripeEvent::create([
             'stripe_event_id' => 'evt_ref_p4',
             'type' => 'checkout.session.completed',
             'livemode' => false,
-            'payload' => ['data' => ['object' => ['client_reference_id' => $purchase->id]]],
+            'payload' => ['data' => ['object' => [
+                'id' => 'cs_ref_p4',
+                'client_reference_id' => $purchase->id,
+                'payment_intent' => 'pi_ref_p4',
+                'amount_total' => 6000,
+            ]]],
             'signature_verified' => true,
         ]);
 
-        app(\App\Domain\Billing\StripeEventProcessor::class)->process($event);
+        app(StripeEventProcessor::class)->process($event);
 
         $this->assertDatabaseHas('referral_conversions', [
             'purchase_id' => $purchase->id,
@@ -128,7 +170,7 @@ class FulfilmentFlowTest extends TestCase
             'payload' => ['data' => ['object' => ['id' => 'ch_refunded_1']]],
             'signature_verified' => true,
         ]);
-        app(\App\Domain\Billing\StripeEventProcessor::class)->process($event);
+        app(StripeEventProcessor::class)->process($event);
 
         $purchase->refresh();
         $this->assertSame('refunded', $purchase->status);

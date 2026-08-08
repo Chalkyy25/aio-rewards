@@ -2,10 +2,14 @@
 
 namespace App\Http\Controllers;
 
-use App\Domain\Billing\StripeCheckoutService;
+use App\Domain\Billing\PurchasePaymentAttemptService;
+use App\Domain\Credits\AccountCreditCheckoutService;
+use App\Domain\Credits\AccountCreditLedger;
 use App\Domain\Referrals\AttributionCookie;
+use App\Models\AmbassadorProfile;
 use App\Models\Package;
 use App\Models\Purchase;
+use App\Models\PurchasePaymentAttempt;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Session;
@@ -45,7 +49,7 @@ class CheckoutController extends Controller
         return redirect()->route('checkout.review', ['slug' => $slug]);
     }
 
-    public function review(string $slug): View|RedirectResponse
+    public function review(string $slug, AccountCreditLedger $ledger, AccountCreditCheckoutService $creditCheckout): View|RedirectResponse
     {
         $pkg = Package::where('slug', $slug)->where('is_active', true)->firstOrFail();
         $details = Session::get('checkout.details');
@@ -53,26 +57,58 @@ class CheckoutController extends Controller
             return redirect()->route('checkout.details', ['slug' => $slug]);
         }
 
-        return view('checkout.review', ['package' => $pkg, 'details' => $details]);
+        $creditAvailableMinor = 0;
+        $canUseCredit = false;
+        $user = auth()->user();
+        if ($user?->ambassadorProfile && $user->is_active) {
+            $creditAvailableMinor = $ledger->availableMinor($user->ambassadorProfile);
+            $canUseCredit = $creditAvailableMinor > 0;
+        }
+
+        $quoteWithCredit = $canUseCredit
+            ? $creditCheckout->quote($user->ambassadorProfile, (int) $pkg->amount_minor, true)
+            : ['credit_applied_minor' => 0, 'external_amount_minor' => (int) $pkg->amount_minor, 'available_minor' => 0];
+
+        $quoteWithout = [
+            'credit_applied_minor' => 0,
+            'external_amount_minor' => (int) $pkg->amount_minor,
+            'available_minor' => $creditAvailableMinor,
+        ];
+
+        return view('checkout.review', [
+            'package' => $pkg,
+            'details' => $details,
+            'canUseCredit' => $canUseCredit,
+            'creditAvailableMinor' => $creditAvailableMinor,
+            'creditAvailableFormatted' => '£'.number_format($creditAvailableMinor / 100, 2),
+            'quoteWithCredit' => $quoteWithCredit,
+            'quoteWithout' => $quoteWithout,
+            'packageAmountFormatted' => $pkg->priceFormatted(),
+        ]);
     }
 
-    public function pay(Request $request, string $slug, StripeCheckoutService $stripe): RedirectResponse
-    {
+    public function pay(
+        Request $request,
+        string $slug,
+        AccountCreditCheckoutService $creditCheckout,
+    ): RedirectResponse {
         $pkg = Package::where('slug', $slug)->where('is_active', true)->firstOrFail();
         $details = Session::get('checkout.details');
         if (! $details || ($details['package_slug'] ?? null) !== $slug) {
             return redirect()->route('checkout.details', ['slug' => $slug]);
         }
 
-        // Prevent duplicate pending purchases: reuse recent pending row with matching key.
-        $recentKey = md5($details['buyer_email'].'|'.$pkg->id.'|'.($details['preferred_username'] ?? ''));
+        // Opt-in only — never trust client-submitted credit amounts.
+        $useCredit = $request->boolean('use_account_credit');
+
+        // Reuse recent pending purchase for buyer/package identity only.
+        // Payment mix changes invalidate prior Stripe attempts (see beginCheckout).
         $recent = Purchase::where('buyer_email', $details['buyer_email'])
             ->where('package_id', $pkg->id)
             ->where('status', 'pending')
             ->where('created_at', '>=', now()->subMinutes(10))
             ->latest()->first();
 
-        // Attribution: encrypted + validated cookie set by /r/{code}.
         $attrCode = null;
         $attrId = null;
         $ambId = null;
@@ -81,6 +117,12 @@ class CheckoutController extends Controller
             $attrCode = $payload['code'];
             $attrId = $payload['attribution_id'];
             $ambId = app(AttributionCookie::class)->ambassadorProfileId($payload);
+        }
+
+        if ($ambId && $this->isSelfReferral($ambId, $details['buyer_email'], $request->user()?->ambassadorProfile)) {
+            $attrCode = null;
+            $attrId = null;
+            $ambId = null;
         }
 
         $purchase = $recent ?: Purchase::create([
@@ -101,31 +143,96 @@ class CheckoutController extends Controller
             'privacy_accepted_at' => now(),
         ]);
 
-        if (! StripeCheckoutService::isConfigured()) {
-            return redirect()->route('checkout.details', ['slug' => $slug])
-                ->withErrors(['stripe' => 'Stripe is not configured on this environment. Please contact the administrator.']);
+        // Refresh attribution on reused pending rows when newly attributed.
+        if ($recent && $ambId && ! $recent->ambassador_profile_id_snapshot) {
+            $purchase->update([
+                'attribution_id' => $attrId,
+                'referral_code_snapshot' => $attrCode,
+                'ambassador_profile_id_snapshot' => $ambId,
+            ]);
         }
 
-        $session = $stripe->createSession($purchase, $pkg, $request);
-        $purchase->update(['stripe_session_id' => $session->id]);
+        $memberProfile = $request->user()?->ambassadorProfile;
+        $wantsCredit = $useCredit && $memberProfile && $request->user()?->is_active;
 
-        return redirect()->away($session->url);
+        try {
+            $result = $creditCheckout->beginCheckout(
+                purchase: $purchase,
+                package: $pkg,
+                profile: $wantsCredit ? $memberProfile : null,
+                useCredit: $wantsCredit,
+                request: $request,
+                actor: $request->user(),
+            );
+        } catch (\InvalidArgumentException $e) {
+            return redirect()->route('checkout.review', ['slug' => $slug])
+                ->withErrors(['credit' => $e->getMessage()]);
+        } catch (\RuntimeException $e) {
+            return redirect()->route('checkout.review', ['slug' => $slug])
+                ->withErrors(['stripe' => $e->getMessage()]);
+        }
+
+        if ($result['fully_credited']) {
+            Session::forget('checkout.details');
+
+            return redirect()->route('checkout.success', ['purchase' => $result['purchase']->id]);
+        }
+
+        return redirect()->away($result['stripe_session']->url);
     }
 
     public function success(Request $request): View
     {
         $purchase = null;
         if ($sessionId = $request->query('session_id')) {
-            $purchase = Purchase::where('stripe_session_id', $sessionId)->first();
+            $attempt = PurchasePaymentAttempt::query()->where('stripe_session_id', $sessionId)->first();
+            $purchase = $attempt?->purchase
+                ?? Purchase::where('stripe_session_id', $sessionId)->first();
+        }
+        if (! $purchase && $request->query('purchase')) {
+            $purchase = Purchase::find($request->query('purchase'));
         }
 
         return view('checkout.success', ['purchase' => $purchase]);
     }
 
-    public function cancel(Request $request): View
+    public function cancel(Request $request, PurchasePaymentAttemptService $attempts): View
     {
-        $purchase = Purchase::find($request->query('purchase'));
+        $attemptId = $request->query('attempt');
+        $token = (string) $request->query('token', '');
 
-        return view('checkout.cancel', ['purchase' => $purchase]);
+        $attempt = $attemptId
+            ? PurchasePaymentAttempt::query()->find($attemptId)
+            : null;
+
+        $purchase = null;
+        $released = false;
+
+        if ($attempt && hash_equals((string) $attempt->cancel_token, $token)) {
+            if ($attempts->authorizeCancel($attempt, $request->user())) {
+                $released = $attempts->markCancelled($attempt, $request->user());
+            }
+            $purchase = $attempt->purchase;
+        }
+
+        return view('checkout.cancel', [
+            'purchase' => $purchase,
+            'cancelled' => $released,
+        ]);
+    }
+
+    private function isSelfReferral(int $ambassadorProfileId, string $buyerEmail, ?AmbassadorProfile $loggedInProfile): bool
+    {
+        if ($loggedInProfile && (int) $loggedInProfile->id === $ambassadorProfileId) {
+            return true;
+        }
+
+        $profile = AmbassadorProfile::query()->with('user')->find($ambassadorProfileId);
+        $email = $profile?->user?->email;
+        if ($email && strcasecmp($email, $buyerEmail) === 0) {
+            return true;
+        }
+
+        return false;
     }
 }

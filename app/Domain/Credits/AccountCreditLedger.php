@@ -3,6 +3,7 @@
 namespace App\Domain\Credits;
 
 use App\Models\AccountCreditBalance;
+use App\Models\AccountCreditReservation;
 use App\Models\AccountCreditTransaction;
 use App\Models\AmbassadorProfile;
 use App\Models\User;
@@ -18,9 +19,7 @@ use RuntimeException;
  *
  * Money is always integer minor units. Never floats.
  *
- * Deferred (not in this patch): periodic reconcile of account_credit_balances
- * against SUM(account_credit_transactions). Cache updates are transactional
- * with inserts today; a background reconcile job remains future work.
+ * Available balance = ledger balance − sum(pending non-expired reservations).
  */
 class AccountCreditLedger
 {
@@ -41,6 +40,26 @@ class AccountCreditLedger
             ->sum('amount_minor');
     }
 
+    /** Sum of active (pending, non-expired) reservations. */
+    public function reservedMinor(AmbassadorProfile|int $profile): int
+    {
+        $profileId = $profile instanceof AmbassadorProfile ? $profile->id : $profile;
+
+        return (int) AccountCreditReservation::query()
+            ->where('ambassador_profile_id', $profileId)
+            ->where('status', AccountCreditReservation::STATUS_PENDING)
+            ->where(function ($q) {
+                $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
+            })
+            ->sum('amount_minor');
+    }
+
+    /** Spendable balance after active reservations. */
+    public function availableMinor(AmbassadorProfile|int $profile): int
+    {
+        return max(0, $this->balanceMinor($profile) - $this->reservedMinor($profile));
+    }
+
     /**
      * Post a credit (positive) or debit (negative) ledger entry.
      *
@@ -55,7 +74,7 @@ class AccountCreditLedger
         string $idempotencyKey,
         ?User $actor = null,
         ?int $rewardId = null,
-        ?int $purchaseId = null,
+        ?string $purchaseId = null,
         string $origin = 'system',
         ?string $reference = null,
         ?string $note = null,
@@ -151,7 +170,7 @@ class AccountCreditLedger
                 return $tx;
             }, attempts: 3);
         } catch (QueryException $e) {
-            // Unique race on idempotency_key or reward+source.
+            // Unique race on idempotency_key or reward+source / purchase+source.
             if ((int) ($e->errorInfo[1] ?? 0) === 1062 || str_contains(strtolower($e->getMessage()), 'unique')) {
                 $existing = AccountCreditTransaction::query()
                     ->where('idempotency_key', $idempotencyKey)
@@ -187,6 +206,85 @@ class AccountCreditLedger
             origin: $actor ? 'admin' : 'system',
             reference: 'reward:'.$rewardId,
             note: $note,
+        );
+    }
+
+    public function creditRewardBonus(
+        AmbassadorProfile $profile,
+        int $amountMinor,
+        string $currency,
+        int $rewardId,
+        ?User $actor = null,
+        ?string $note = null,
+    ): AccountCreditTransaction {
+        if ($amountMinor <= 0) {
+            throw new InvalidArgumentException('Reward bonus amount must be positive.');
+        }
+
+        return $this->post(
+            profile: $profile,
+            signedAmountMinor: $amountMinor,
+            currency: $currency,
+            source: AccountCreditTransaction::SOURCE_REWARD_BONUS,
+            idempotencyKey: 'reward_bonus:'.$rewardId,
+            actor: $actor,
+            rewardId: $rewardId,
+            origin: $actor ? 'admin' : 'system',
+            reference: 'reward_bonus:'.$rewardId,
+            note: $note ?? 'Milestone Account Credit Bonus',
+        );
+    }
+
+    public function debitPurchaseRedemption(
+        AmbassadorProfile $profile,
+        int $amountMinor,
+        string $currency,
+        string $purchaseId,
+        ?User $actor = null,
+        ?string $note = null,
+    ): AccountCreditTransaction {
+        if ($amountMinor <= 0) {
+            throw new InvalidArgumentException('Purchase redemption amount must be positive.');
+        }
+
+        return $this->post(
+            profile: $profile,
+            signedAmountMinor: -$amountMinor,
+            currency: $currency,
+            source: AccountCreditTransaction::SOURCE_PURCHASE_REDEMPTION,
+            idempotencyKey: 'purchase_redemption:'.$purchaseId,
+            actor: $actor,
+            purchaseId: $purchaseId,
+            origin: $actor ? 'member' : 'system',
+            reference: 'purchase:'.$purchaseId,
+            note: $note ?? 'Package Purchase',
+        );
+    }
+
+    public function creditRestoration(
+        AmbassadorProfile $profile,
+        int $amountMinor,
+        string $currency,
+        string $purchaseId,
+        ?User $actor = null,
+        ?string $note = null,
+        ?string $idempotencyKey = null,
+    ): AccountCreditTransaction {
+        if ($amountMinor <= 0) {
+            throw new InvalidArgumentException('Credit restoration amount must be positive.');
+        }
+
+        return $this->post(
+            profile: $profile,
+            signedAmountMinor: $amountMinor,
+            currency: $currency,
+            source: AccountCreditTransaction::SOURCE_CREDIT_RESTORATION,
+            idempotencyKey: $idempotencyKey ?? ('credit_restoration:'.$purchaseId),
+            actor: $actor,
+            purchaseId: $purchaseId,
+            origin: $actor ? 'admin' : 'system',
+            reference: 'purchase:'.$purchaseId,
+            note: $note ?? 'Credit Restoration',
         );
     }
 }

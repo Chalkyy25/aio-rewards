@@ -2,16 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Domain\Credits\AccountCreditLedger;
 use App\Domain\Rewards\MilestoneProgressionService;
+use App\Models\ReferralConversion;
 use App\Models\Reward;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class AmbassadorDashboardController extends Controller
 {
-    public function __construct(private readonly MilestoneProgressionService $milestones)
-    {
-    }
+    public function __construct(private readonly MilestoneProgressionService $milestones) {}
 
     public function show(Request $request): View
     {
@@ -33,9 +33,17 @@ class AmbassadorDashboardController extends Controller
             'progress_bonus_amount_minor' => 0,
             'has_available_now' => false,
             'is_max_tier_available' => false,
+            'account_credit_balance_minor' => 0,
+            'account_credit_available_minor' => 0,
+            'account_credit_reserved_minor' => 0,
         ];
 
         if ($profile) {
+            $ledger = app(AccountCreditLedger::class);
+            $stats['account_credit_balance_minor'] = $ledger->balanceMinor($profile);
+            $stats['account_credit_available_minor'] = $ledger->availableMinor($profile);
+            $stats['account_credit_reserved_minor'] = $ledger->reservedMinor($profile);
+
             $rewards = Reward::query()
                 ->where('ambassador_profile_id', $profile->id)
                 ->selectRaw('status, SUM(amount_minor) as total')
@@ -50,7 +58,7 @@ class AmbassadorDashboardController extends Controller
 
             // Lifetime stat — never resets on cash-out. This is intentionally
             // distinct from `approved_conversions` (which is active-cycle only).
-            $stats['lifetime_approved_referrals'] = \App\Models\ReferralConversion::query()
+            $stats['lifetime_approved_referrals'] = ReferralConversion::query()
                 ->where('ambassador_profile_id', $profile->id)
                 ->where('status', 'approved')
                 ->count();

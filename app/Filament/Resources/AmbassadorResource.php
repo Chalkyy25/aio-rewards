@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Domain\Credits\AccountCreditLedger;
 use App\Domain\Rewards\MilestoneProgress;
 use App\Domain\Rewards\MilestoneProgressionService;
 use App\Enums\PayoutMethod;
@@ -101,6 +102,27 @@ class AmbassadorResource extends Resource
                     ->label('Account Credit')
                     ->state('Member selected Account Credit — no bank destination stored.')
                     ->visible(fn (AmbassadorProfile $r) => $r->payoutProfile?->preferred_method === PayoutMethod::AccountCredit),
+                TextEntry::make('account_credit_balance')
+                    ->label('AC balance')
+                    ->state(function (AmbassadorProfile $r) {
+                        $ledger = app(AccountCreditLedger::class);
+
+                        return '£'.number_format($ledger->balanceMinor($r) / 100, 2);
+                    }),
+                TextEntry::make('account_credit_available')
+                    ->label('AC available')
+                    ->state(function (AmbassadorProfile $r) {
+                        $ledger = app(AccountCreditLedger::class);
+
+                        return '£'.number_format($ledger->availableMinor($r) / 100, 2);
+                    }),
+                TextEntry::make('account_credit_reserved')
+                    ->label('AC reserved')
+                    ->state(function (AmbassadorProfile $r) {
+                        $ledger = app(AccountCreditLedger::class);
+
+                        return '£'.number_format($ledger->reservedMinor($r) / 100, 2);
+                    }),
             ])->columns(2),
 
             Section::make('Reward progress')->schema([

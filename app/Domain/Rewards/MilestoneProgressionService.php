@@ -167,6 +167,7 @@ class MilestoneProgressionService
                     'tier_snapshot' => $tier->snapshot(),
                     'idempotency_key' => $key,
                     'amount_minor' => $tier->total_reward_amount_minor,
+                    'account_credit_bonus_minor_snapshot' => max(0, (int) $tier->account_credit_bonus_minor),
                     'currency' => $tier->currency,
                     'status' => 'pending_approval',
                 ]);
@@ -197,6 +198,7 @@ class MilestoneProgressionService
                 'tier_id' => $tier->id,
                 'threshold' => $tier->threshold,
                 'amount_minor' => $tier->total_reward_amount_minor,
+                'account_credit_bonus_minor_snapshot' => $reward->account_credit_bonus_minor_snapshot,
                 'cycle_number' => $cycleNumber,
             ]);
             RewardCreated::dispatch($reward);

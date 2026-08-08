@@ -4,6 +4,7 @@ namespace App\Domain\Referrals;
 
 use App\Domain\Referrals\Events\ReferralConversionApproved;
 use App\Domain\Rewards\RewardFundingIntegrityService;
+use App\Models\AmbassadorProfile;
 use App\Models\Purchase;
 use App\Models\ReferralConversion;
 use App\Models\User;
@@ -30,6 +31,21 @@ class ConversionService
             return null;
         }
         if ($purchase->status !== 'paid') {
+            return null;
+        }
+
+        // Anti-farming: block self-referral (buyer email matches ambassador account email).
+        $ambassador = AmbassadorProfile::query()
+            ->with('user')
+            ->find($purchase->ambassador_profile_id_snapshot);
+        if ($ambassador?->user?->email
+            && strcasecmp((string) $ambassador->user->email, (string) $purchase->buyer_email) === 0) {
+            AuditLogger::record(
+                action: 'conversion.blocked_self_referral',
+                subject: $purchase,
+                after: ['reason' => 'buyer_email_matches_ambassador'],
+            );
+
             return null;
         }
 

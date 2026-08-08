@@ -2,6 +2,8 @@
 
 namespace App\Domain\Fulfilment;
 
+use App\Domain\Credits\AccountCreditCheckoutService;
+use App\Domain\Notifications\BuyerOrderNotifier;
 use App\Models\Purchase;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
@@ -46,7 +48,7 @@ class OrderFulfilmentService
         AuditLogger::record('order.payment_received', $purchase, before: $before);
     }
 
-    public function transition(Purchase $purchase, OrderStatus $to, ?User $actor = null): void
+    public function transition(Purchase $purchase, OrderStatus $to, ?User $actor = null, bool $restoreCredit = true): void
     {
         $from = (string) $purchase->fulfilment_status;
         if ($from === $to->value) {
@@ -86,9 +88,20 @@ class OrderFulfilmentService
             actor: $actor,
         );
 
+        // Admin/ops refund path: restore AC for full clawback when caller requests it.
+        // Stripe webhooks pass restoreCredit=false and apply amount-aware restoration themselves.
+        if ($to === OrderStatus::Refunded && $restoreCredit) {
+            try {
+                App::make(AccountCreditCheckoutService::class)
+                    ->restoreFullyCreditedPurchase($purchase, $actor);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
         // Notify the buyer once fulfilment reaches Completed (idempotent).
         if ($to === OrderStatus::Completed) {
-            App::make(\App\Domain\Notifications\BuyerOrderNotifier::class)
+            App::make(BuyerOrderNotifier::class)
                 ->sendOrderCompleted($purchase);
         }
     }

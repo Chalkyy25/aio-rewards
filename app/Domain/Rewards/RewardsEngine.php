@@ -2,6 +2,7 @@
 
 namespace App\Domain\Rewards;
 
+use App\Domain\Credits\AccountCreditFulfilmentService;
 use App\Domain\Rewards\Events\RewardApproved;
 use App\Domain\Rewards\Events\RewardPaid;
 use App\Domain\Rewards\Events\RewardReversed;
@@ -11,6 +12,7 @@ use App\Models\Reward;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
 use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 /**
  * Central owner of the Reward lifecycle transitions.
@@ -22,6 +24,7 @@ class RewardsEngine
 {
     public function __construct(
         private readonly RewardFundingIntegrityService $funding,
+        private readonly AccountCreditFulfilmentService $accountCreditFulfilment,
     ) {}
 
     /**
@@ -66,6 +69,18 @@ class RewardsEngine
             }
 
             $fresh = $locked->fresh();
+
+            // Account Credit claims: approve + ledger fulfilment are one atomic workflow.
+            // Bank Transfer / null snapshot stay approved (awaiting payment) only.
+            if ($fresh->claimedPayoutMethod() === PayoutMethod::AccountCredit) {
+                $applied = $this->accountCreditFulfilment->apply($fresh, $actor);
+                if (! $applied) {
+                    throw new RuntimeException('Account Credit fulfilment failed after approval.');
+                }
+
+                $fresh = $fresh->fresh();
+            }
+
             AuditLogger::record('reward.approved', $fresh, actor: $actor);
             RewardApproved::dispatch($fresh);
 

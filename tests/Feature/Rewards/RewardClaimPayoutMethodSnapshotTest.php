@@ -177,7 +177,10 @@ class RewardClaimPayoutMethodSnapshotTest extends TestCase
 
         $this->assertSame(PayoutMethod::AccountCredit, $reward->fulfilmentPayoutMethod());
         $this->assertTrue($reward->prefersAccountCredit());
+        $this->assertSame('paid', $reward->status);
+        $this->assertSame(PayoutMethod::AccountCredit->value, $reward->payment_method);
 
+        // Idempotent re-apply after live preference switched to bank.
         $this->assertTrue(app(AccountCreditFulfilmentService::class)->apply($reward, $this->admin));
         $this->assertSame(6000, app(AccountCreditLedger::class)->balanceMinor($this->profile));
         $this->assertSame(1, AccountCreditTransaction::query()
@@ -271,14 +274,17 @@ class RewardClaimPayoutMethodSnapshotTest extends TestCase
         app(RewardsEngine::class)->approve($reward, $this->admin);
         $reward->refresh();
 
+        $this->assertSame('paid', $reward->status);
+        $this->assertSame(PayoutMethod::AccountCredit->value, $reward->payment_method);
+
         $this->assertFalse(app(RewardsEngine::class)->markPaid(
             $reward,
             $this->admin,
             paymentMethod: PayoutMethod::BankTransfer->value,
         ));
         $this->assertFalse(app(RewardsEngine::class)->markPaid($reward->fresh(), $this->admin));
-        $this->assertSame('approved', $reward->fresh()->status);
-        $this->assertNull($reward->fresh()->payment_method);
+        $this->assertSame('paid', $reward->fresh()->status);
+        $this->assertSame(PayoutMethod::AccountCredit->value, $reward->fresh()->payment_method);
     }
 
     public function test_mark_paid_honours_bank_snapshot_and_ignores_account_credit_override(): void
@@ -335,7 +341,8 @@ class RewardClaimPayoutMethodSnapshotTest extends TestCase
             $this->admin,
             paymentMethod: PayoutMethod::BankTransfer->value,
         ));
-        $this->assertSame('approved', $reward->fresh()->status);
+        $this->assertSame('paid', $reward->fresh()->status);
+        $this->assertSame(PayoutMethod::AccountCredit->value, $reward->fresh()->payment_method);
         $this->assertSame(PayoutMethod::AccountCredit, $reward->fresh()->preferred_payout_method_snapshot);
     }
 

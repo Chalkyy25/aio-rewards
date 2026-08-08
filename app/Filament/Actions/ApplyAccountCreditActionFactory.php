@@ -13,25 +13,26 @@ use Filament\Notifications\Notification;
 use Illuminate\Support\Facades\Auth;
 
 /**
- * Admin action: atomically credit the member's Account Credit ledger and
- * mark the reward paid. Distinct from Bank Transfer "Mark paid".
+ * Recovery action for approved Account Credit claims that were not auto-fulfilled
+ * on Approve (e.g. interrupted runs). Normal AC approval already applies credit.
  */
 final class ApplyAccountCreditActionFactory
 {
     public static function make(string $name = 'applyAccountCredit'): Action
     {
         return Action::make($name)
-            ->label(fn (Reward $r) => 'Apply '.$r->accountCreditTotalFormatted().' Account Credit')
+            ->label(fn (Reward $r) => 'Apply '.$r->accountCreditTotalFormatted().' Account Credit (recovery)')
             ->icon('heroicon-o-wallet')
-            ->color('success')
+            ->color('warning')
             ->visible(function (Reward $r): bool {
+                // Normal Approve already fulfils AC claims; keep this only for stuck approved rows.
                 if ($r->status !== 'approved') {
                     return false;
                 }
 
                 return $r->fulfilmentPayoutMethod() === PayoutMethod::AccountCredit;
             })
-            ->modalHeading(fn (Reward $r) => 'Apply '.$r->accountCreditTotalFormatted().' Account Credit')
+            ->modalHeading(fn (Reward $r) => 'Recover: apply '.$r->accountCreditTotalFormatted().' Account Credit')
             ->modalDescription(function (Reward $r) {
                 $member = $r->ambassadorProfile?->user;
                 $name = $member?->name ?? 'Unknown member';
@@ -49,15 +50,17 @@ final class ApplyAccountCreditActionFactory
                     ? 'Base reward: '.$r->amountFormatted().'. Milestone bonus: '.$r->accountCreditBonusFormatted().'. '
                     : 'Base reward: '.$r->amountFormatted().' (no milestone bonus). ';
 
-                return 'Member: '.$name.($email !== '' ? " ({$email})" : '').'. '
+                return 'Recovery only — Approve normally applies Account Credit automatically. '
+                    .'Use this if an Account Credit claim is stuck at approved/awaiting payment. '
+                    .'Member: '.$name.($email !== '' ? " ({$email})" : '').'. '
                     .$bonusLine
                     .'Total Account Credit: '.$r->accountCreditTotalFormatted().'. '
                     .'Current balance: '.$fmt($current).'. '
                     .'Resulting balance: '.$fmt($resulting).'. '
-                    .'This immediately credits their AIO account balance and marks the reward paid. '
-                    .'Do not perform this action twice — the system blocks duplicate credits.';
+                    .'This credits their AIO account balance and marks the reward paid. '
+                    .'Duplicate credits are blocked.';
             })
-            ->modalSubmitActionLabel('Confirm Account Credit')
+            ->modalSubmitActionLabel('Confirm recovery credit')
             ->schema([
                 Textarea::make('note')
                     ->label('Admin note')

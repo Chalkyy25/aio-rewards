@@ -301,14 +301,35 @@ class RewardResource extends Resource
                         ->requiresConfirmation()
                         ->action(function (Reward $r, RewardsEngine $engine) {
                             try {
-                                if ($engine->approve($r, Auth::user())) {
-                                    Notification::make()->title('Reward approved')->success()->send();
-                                } else {
+                                if (! $engine->approve($r, Auth::user())) {
                                     Notification::make()->title('Could not approve')->warning()->send();
+
+                                    return;
                                 }
+
+                                $fresh = $r->fresh();
+                                if ($fresh
+                                    && $fresh->status === 'paid'
+                                    && $fresh->payment_method === PayoutMethod::AccountCredit->value
+                                ) {
+                                    Notification::make()
+                                        ->title('Approved and '.$fresh->adminPayableAmountFormatted().' Account Credit applied.')
+                                        ->success()
+                                        ->send();
+
+                                    return;
+                                }
+
+                                Notification::make()->title('Reward approved')->success()->send();
                             } catch (RewardFundingIntegrityException $e) {
                                 Notification::make()
                                     ->title('Cannot approve — funding invalid')
+                                    ->body($e->getMessage())
+                                    ->danger()
+                                    ->send();
+                            } catch (\RuntimeException $e) {
+                                Notification::make()
+                                    ->title('Could not approve')
                                     ->body($e->getMessage())
                                     ->danger()
                                     ->send();

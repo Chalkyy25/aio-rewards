@@ -117,7 +117,7 @@ class BuyerOrderNotificationsTest extends TestCase
         $svc = app(OrderFulfilmentService::class);
         $svc->updateFulfilmentDetails($purchase, [
             'provisioned_username' => 'aio_complete_user',
-            'provisioned_password' => 'complete-secret-2026',
+            'provisioned_password' => 'aio-test-cred-complete',
         ]);
 
         $svc->transition($purchase->fresh(), OrderStatus::Completed);
@@ -141,7 +141,7 @@ class BuyerOrderNotificationsTest extends TestCase
         $svc = app(OrderFulfilmentService::class);
         $svc->updateFulfilmentDetails($purchase, [
             'provisioned_username' => 'aio_complete_user',
-            'provisioned_password' => 'complete-secret-2026',
+            'provisioned_password' => 'aio-test-cred-complete',
         ]);
         $svc->transition($purchase->fresh(), OrderStatus::AwaitingCustomer);
         $svc->transition($purchase->fresh(), OrderStatus::Completed);

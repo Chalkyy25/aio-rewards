@@ -55,7 +55,7 @@ class CompleteOrderTest extends TestCase
     {
         $this->svc->updateFulfilmentDetails($purchase, [
             'provisioned_username' => 'aio_ready_user',
-            'provisioned_password' => 'ready-secret-2026',
+            'provisioned_password' => 'aio-test-cred-ready',
             'setup_instructions_md' => 'Open the app and sign in.',
             'download_links' => [['label' => 'Android APK', 'url' => 'https://example.com/aio.apk']],
         ]);
@@ -88,7 +88,7 @@ class CompleteOrderTest extends TestCase
         $this->assertNotNull($purchase->fulfilled_at);
         $this->assertNull($purchase->setup_started_at);
         $this->assertSame('aio_ready_user', $purchase->provisioned_username_enc);
-        $this->assertSame('ready-secret-2026', $purchase->provisioned_password_enc);
+        $this->assertSame('aio-test-cred-ready', $purchase->provisioned_password_enc);
         Notification::assertSentOnDemandTimes(BuyerOrderCompletedNotification::class, 1);
     }
 
@@ -179,7 +179,7 @@ class CompleteOrderTest extends TestCase
 
         $missingUsername = $this->paidPurchase('payment_received');
         $this->svc->updateFulfilmentDetails($missingUsername, [
-            'provisioned_password' => 'only-password-2026',
+            'provisioned_password' => 'aio-test-cred-solo',
         ]);
 
         try {
@@ -290,7 +290,7 @@ class CompleteOrderTest extends TestCase
             ->assertOk()
             ->assertSee('Ready to use')
             ->assertSee('aio_ready_user')
-            ->assertSee('ready-secret-2026')
+            ->assertSee('aio-test-cred-ready')
             ->assertSee('Open the app and sign in.')
             ->assertSee('Android APK')
             ->assertDontSee('We do not activate instantly');

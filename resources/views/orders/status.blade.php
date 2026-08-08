@@ -53,10 +53,16 @@
             <span class="status-badge badge-{{ $s }}" data-testid="order-status-badge">{{ $purchase->statusLabel() }}</span>
         </div>
 
-        <dl class="meta">
+        <dl class="meta" data-testid="order-payment-breakdown">
             <dt>Package</dt><dd data-testid="order-package">{{ $purchase->package->name }} — {{ $purchase->package->duration_label }}</dd>
-            <dt>Amount paid</dt><dd data-testid="order-amount">{{ $purchase->priceFormatted() }}</dd>
-            <dt>Payment status</dt><dd>{{ ucfirst($purchase->status) }}</dd>
+            <dt>Order total</dt><dd data-testid="order-total">{{ $purchase->priceFormatted() }}</dd>
+            @if ($purchase->showsAccountCreditRow())
+                <dt>Account Credit</dt><dd data-testid="order-account-credit">{{ $purchase->formatAmountMinor($purchase->accountCreditAppliedForDisplay()) }}</dd>
+            @endif
+            @if ($purchase->showsCardPaymentRow())
+                <dt>Card payment</dt><dd data-testid="order-card-payment">{{ $purchase->formatAmountMinor((int) $purchase->external_amount_minor) }}</dd>
+            @endif
+            <dt>Payment status</dt><dd data-testid="order-payment-status">{{ ucfirst($purchase->status) }}</dd>
             <dt>Preferred username</dt><dd>{{ $purchase->preferred_username }}</dd>
             <dt>Delivery method</dt><dd>{{ ucfirst($purchase->delivery_method) }}</dd>
         </dl>

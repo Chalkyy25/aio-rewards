@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Domain\Payouts\NotifyMissingPayoutMethod;
+use App\Domain\Payouts\RevealedPayoutDetailsStore;
 use App\Domain\Rewards\Events\RewardApproved;
 use App\Listeners\SendAmbassadorWelcomeAfterVerified;
 use App\Models\AmbassadorProfile;
@@ -21,7 +22,8 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        //
+        // Request-scoped temporary holder for authorised payout reveals.
+        $this->app->singleton(RevealedPayoutDetailsStore::class);
     }
 
     public function boot(): void

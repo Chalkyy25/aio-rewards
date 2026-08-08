@@ -2,9 +2,12 @@
 
 namespace App\Models;
 
+use Database\Factories\RewardFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 /**
  * @property int $id
@@ -14,11 +17,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $milestone_index
  * @property int $amount_minor
  * @property string $currency
- * @property string $status  pending_approval|approved|rejected|paid|reversed
- * @property ?\Illuminate\Support\Carbon $approved_at
- * @property ?\Illuminate\Support\Carbon $paid_at
- * @property ?\Illuminate\Support\Carbon $rejected_at
- * @property ?\Illuminate\Support\Carbon $reversed_at
+ * @property string $status pending_approval|approved|rejected|paid|reversed
+ * @property ?Carbon $approved_at
+ * @property ?Carbon $paid_at
+ * @property ?string $payment_method
+ * @property ?string $payment_reference
+ * @property ?Carbon $rejected_at
+ * @property ?Carbon $reversed_at
  * @property ?int $approved_by_user_id
  * @property ?int $paid_by_user_id
  * @property ?int $rejected_by_user_id
@@ -27,7 +32,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class Reward extends Model
 {
-    /** @use HasFactory<\Database\Factories\RewardFactory> */
+    /** @use HasFactory<RewardFactory> */
     use HasFactory;
 
     protected $fillable = [
@@ -35,6 +40,7 @@ class Reward extends Model
         'milestone_tier_id', 'milestone_index', 'cycle_number', 'origin',
         'tier_snapshot', 'idempotency_key', 'reject_disposition',
         'amount_minor', 'currency', 'status', 'note',
+        'payment_method', 'payment_reference',
         'approved_by_user_id', 'paid_by_user_id', 'rejected_by_user_id', 'reversed_by_user_id',
         'approved_at', 'paid_at', 'rejected_at', 'reversed_at',
     ];
@@ -53,14 +59,14 @@ class Reward extends Model
         ];
     }
 
-    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<RewardMilestoneTier, $this> */
-    public function tier(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    /** @return BelongsTo<RewardMilestoneTier, $this> */
+    public function tier(): BelongsTo
     {
         return $this->belongsTo(RewardMilestoneTier::class, 'milestone_tier_id');
     }
 
-    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<ReferralAllocation, $this> */
-    public function allocations(): \Illuminate\Database\Eloquent\Relations\HasMany
+    /** @return HasMany<ReferralAllocation, $this> */
+    public function allocations(): HasMany
     {
         return $this->hasMany(ReferralAllocation::class, 'reward_id');
     }
@@ -120,7 +126,7 @@ class Reward extends Model
     {
         return match ($this->status) {
             'pending_approval' => 'Pending approval',
-            'approved' => 'Approved',
+            'approved' => 'Awaiting payment',
             'rejected' => 'Rejected',
             'paid' => 'Paid',
             'reversed' => 'Reversed',

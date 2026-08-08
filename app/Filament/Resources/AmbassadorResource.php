@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Domain\Rewards\MilestoneProgress;
 use App\Domain\Rewards\MilestoneProgressionService;
 use App\Enums\PayoutMethod;
 use App\Filament\Resources\AmbassadorResource\Pages;
@@ -78,41 +79,27 @@ class AmbassadorResource extends Resource
                 TextEntry::make('flagged_reason')->placeholder('—'),
             ])->columns(2),
 
-            Section::make('Payout Details')->schema([
+            Section::make('Payout preference')->schema([
                 TextEntry::make('payout_method')
-                    ->label('Preferred payout method')
+                    ->label('Payout preference')
                     ->state(fn (AmbassadorProfile $r) => $r->payoutProfile?->preferred_method?->label() ?? 'Not configured'),
                 TextEntry::make('payout_configured')
-                    ->label('Details configured')
+                    ->label('Configured')
                     ->state(fn (AmbassadorProfile $r) => $r->hasConfiguredPayoutMethod() ? 'Yes' : 'No')
                     ->badge()
                     ->color(fn (AmbassadorProfile $r) => $r->hasConfiguredPayoutMethod() ? 'success' : 'warning'),
+                TextEntry::make('payout_masked_summary')
+                    ->label('Masked details')
+                    ->state(fn (AmbassadorProfile $r) => $r->payoutProfile?->maskedDetailsSummary() ?? '—')
+                    ->visible(fn (AmbassadorProfile $r) => $r->hasConfiguredPayoutMethod()),
                 TextEntry::make('payout_updated_at')
                     ->label('Last updated')
                     ->state(fn (AmbassadorProfile $r) => $r->payoutProfile?->updated_at)
                     ->dateTime()
                     ->placeholder('—'),
-                TextEntry::make('payout_account_holder')
-                    ->label('Account holder')
-                    ->state(fn (AmbassadorProfile $r) => $r->payoutProfile?->preferred_method === PayoutMethod::BankTransfer
-                        ? ($r->payoutProfile->account_holder_name ?? '—')
-                        : '—')
-                    ->visible(fn (AmbassadorProfile $r) => $r->payoutProfile?->preferred_method === PayoutMethod::BankTransfer),
-                TextEntry::make('payout_masked_sort')
-                    ->label('Sort code')
-                    ->state(fn (AmbassadorProfile $r) => $r->payoutProfile?->maskedSortCode() ?? '—')
-                    ->visible(fn (AmbassadorProfile $r) => $r->payoutProfile?->preferred_method === PayoutMethod::BankTransfer),
-                TextEntry::make('payout_masked_account')
-                    ->label('Account number')
-                    ->state(fn (AmbassadorProfile $r) => $r->payoutProfile?->maskedAccountNumber() ?? '—')
-                    ->visible(fn (AmbassadorProfile $r) => $r->payoutProfile?->preferred_method === PayoutMethod::BankTransfer),
-                TextEntry::make('payout_paypal')
-                    ->label('PayPal email')
-                    ->state(fn (AmbassadorProfile $r) => $r->payoutProfile?->paypal_email ?? '—')
-                    ->visible(fn (AmbassadorProfile $r) => $r->payoutProfile?->preferred_method === PayoutMethod::PayPal),
                 TextEntry::make('payout_credit_note')
                     ->label('Account Credit')
-                    ->state('Member selected Account Credit — no bank/PayPal destination stored.')
+                    ->state('Member selected Account Credit — no bank destination stored.')
                     ->visible(fn (AmbassadorProfile $r) => $r->payoutProfile?->preferred_method === PayoutMethod::AccountCredit),
             ])->columns(2),
 
@@ -124,6 +111,7 @@ class AmbassadorResource extends Resource
                     ->label('Available now')
                     ->state(function (AmbassadorProfile $r) {
                         $p = static::progress($r);
+
                         return $p->hasClaim()
                             ? '£'.number_format($p->availableAmountMinor / 100, 2)
                             : '—';
@@ -132,6 +120,7 @@ class AmbassadorResource extends Resource
                     ->label('Next milestone')
                     ->state(function (AmbassadorProfile $r) {
                         $p = static::progress($r);
+
                         return $p->nextTier
                             ? sprintf('%s at %d referrals', $p->nextTier->title, $p->nextTier->threshold)
                             : 'Maximum reward reached';
@@ -143,6 +132,7 @@ class AmbassadorResource extends Resource
                     ->label('Save & Grow bonus building')
                     ->state(function (AmbassadorProfile $r) {
                         $bonus = static::progress($r)->bonusBeingBuiltMinor;
+
                         return $bonus > 0 ? '£'.number_format($bonus / 100, 2) : '—';
                     }),
                 TextEntry::make('cycle_number')
@@ -177,13 +167,14 @@ class AmbassadorResource extends Resource
                         if (! $open) {
                             return '—';
                         }
+
                         return sprintf('%s (%s)', $open->amountFormatted(), $open->statusLabel());
                     }),
             ])->columns(3),
         ]);
     }
 
-    private static function progress(AmbassadorProfile $r): \App\Domain\Rewards\MilestoneProgress
+    private static function progress(AmbassadorProfile $r): MilestoneProgress
     {
         return app(MilestoneProgressionService::class)->progressFor($r);
     }

@@ -7,9 +7,11 @@ use App\Domain\Payouts\MemberPayoutProfileService;
 use App\Domain\Rewards\RewardsEngine;
 use App\Enums\PayoutMethod;
 use App\Enums\Role;
+use App\Filament\Actions\RevealPayoutDetailsActionFactory;
 use App\Filament\Resources\AmbassadorResource;
 use App\Filament\Resources\AmbassadorResource\Pages\ViewAmbassador;
 use App\Filament\Resources\RewardResource;
+use App\Filament\Resources\RewardResource\Pages\ViewReward;
 use App\Livewire\AmbassadorPayoutSettings;
 use App\Models\AmbassadorProfile;
 use App\Models\AuditLog;
@@ -24,6 +26,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Validation\ValidationException;
 use Livewire\Livewire;
 use Tests\TestCase;
 
@@ -65,6 +68,16 @@ class MemberPayoutProfileTest extends TestCase
         return $user;
     }
 
+    public function test_bank_transfer_is_the_supported_sensitive_payout_method(): void
+    {
+        $options = PayoutMethod::configurableOptions();
+
+        $this->assertArrayHasKey(PayoutMethod::BankTransfer->value, $options);
+        $this->assertArrayHasKey(PayoutMethod::AccountCredit->value, $options);
+        $this->assertArrayNotHasKey(PayoutMethod::PayPal->value, $options);
+        $this->assertSame($options, PayoutMethod::options());
+    }
+
     public function test_rewards_member_can_open_payout_settings(): void
     {
         [$user] = $this->makeVerifiedMember();
@@ -74,7 +87,11 @@ class MemberPayoutProfileTest extends TestCase
             ->assertOk()
             ->assertSee('Payout Settings')
             ->assertSee('data-testid="ambassador-payout-settings-page"', false)
-            ->assertSee('data-testid="nav-payout-settings"', false);
+            ->assertSee('data-testid="nav-payout-settings"', false)
+            ->assertSee('Bank Transfer')
+            ->assertSee('Account Credit')
+            ->assertDontSee('>PayPal<', false)
+            ->assertDontSee('value="paypal"', false);
     }
 
     public function test_unverified_user_is_blocked(): void
@@ -92,7 +109,6 @@ class MemberPayoutProfileTest extends TestCase
             'is_active' => true,
             'email_verified_at' => now(),
         ]);
-        // No ambassador role / profile.
 
         $this->actingAs($user)
             ->get(route('ambassador.payout-settings'))
@@ -176,27 +192,30 @@ class MemberPayoutProfileTest extends TestCase
         $this->assertStringNotContainsString('Alex Example', (string) $payload);
     }
 
-    public function test_paypal_method_saves_correctly(): void
+    public function test_paypal_cannot_be_newly_configured(): void
     {
-        [$user] = $this->makeVerifiedMember();
+        [$user, $profile] = $this->makeVerifiedMember();
 
         Livewire::actingAs($user)
             ->test(AmbassadorPayoutSettings::class)
             ->set('preferredMethod', PayoutMethod::PayPal->value)
-            ->set('paypalEmail', 'payouts@example.com')
             ->set('confirmPassword', self::PASSWORD)
             ->call('save')
-            ->assertHasNoErrors()
-            ->assertSee('payouts@example.com');
+            ->assertHasErrors(['preferredMethod']);
 
-        $model = MemberPayoutProfile::first();
-        $this->assertSame(PayoutMethod::PayPal, $model->preferred_method);
-        $this->assertSame('payouts@example.com', $model->paypal_email);
-        $this->assertNull($model->sort_code);
-        $this->assertNull($model->account_number);
+        $this->expectException(ValidationException::class);
+        app(MemberPayoutProfileService::class)->save(
+            $profile,
+            $user,
+            [
+                'preferred_method' => PayoutMethod::PayPal,
+                'paypal_email' => 'payouts@example.com',
+            ],
+            self::PASSWORD,
+        );
     }
 
-    public function test_account_credit_requires_no_bank_or_paypal_details(): void
+    public function test_account_credit_requires_no_bank_details(): void
     {
         [$user] = $this->makeVerifiedMember();
 
@@ -227,19 +246,6 @@ class MemberPayoutProfileTest extends TestCase
             ->set('confirmPassword', self::PASSWORD)
             ->call('save')
             ->assertHasErrors(['sortCode', 'accountNumber']);
-    }
-
-    public function test_invalid_paypal_email_is_rejected(): void
-    {
-        [$user] = $this->makeVerifiedMember();
-
-        Livewire::actingAs($user)
-            ->test(AmbassadorPayoutSettings::class)
-            ->set('preferredMethod', PayoutMethod::PayPal->value)
-            ->set('paypalEmail', 'not-an-email')
-            ->set('confirmPassword', self::PASSWORD)
-            ->call('save')
-            ->assertHasErrors(['paypalEmail']);
     }
 
     public function test_sensitive_updates_require_password_confirmation(): void
@@ -275,7 +281,6 @@ class MemberPayoutProfileTest extends TestCase
             MemberPayoutProfile::query()->where('ambassador_profile_id', $profileA->id)->first()
         ));
 
-        // Member B's Livewire page only hydrates B's own profile.
         Livewire::actingAs($userB)
             ->test(AmbassadorPayoutSettings::class)
             ->assertSet('isConfigured', false)
@@ -295,16 +300,15 @@ class MemberPayoutProfileTest extends TestCase
         ], self::PASSWORD);
 
         $service->save($profile, $user, [
-            'preferred_method' => PayoutMethod::PayPal,
-            'paypal_email' => 'now-paypal@example.com',
+            'preferred_method' => PayoutMethod::AccountCredit,
         ], self::PASSWORD);
 
         $model = MemberPayoutProfile::first();
-        $this->assertSame(PayoutMethod::PayPal, $model->preferred_method);
+        $this->assertSame(PayoutMethod::AccountCredit, $model->preferred_method);
         $this->assertNull($model->sort_code);
         $this->assertNull($model->account_number);
         $this->assertNull($model->account_holder_name);
-        $this->assertSame('now-paypal@example.com', $model->paypal_email);
+        $this->assertNull($model->paypal_email);
         $this->assertTrue(
             AuditLog::query()->where('action', 'payout_profile.method_changed')->exists()
         );
@@ -325,7 +329,7 @@ class MemberPayoutProfileTest extends TestCase
             ->assertActionHidden('revealPayoutDetails');
     }
 
-    public function test_admin_reveal_action_is_permission_gated_and_audited(): void
+    public function test_admin_reveal_opens_modal_and_is_audited_without_plaintext(): void
     {
         [, $profile] = $this->makeVerifiedMember();
         MemberPayoutProfile::factory()->forProfile($profile)->bankTransfer(
@@ -345,6 +349,14 @@ class MemberPayoutProfileTest extends TestCase
             ->callAction('revealPayoutDetails', data: [
                 'reason' => 'Processing approved reward payout',
                 'password' => self::PASSWORD,
+            ])
+            ->assertActionMounted(RevealPayoutDetailsActionFactory::SHOW_ACTION)
+            ->assertMountedActionModalSee([
+                'Payout details',
+                'Alex Example',
+                '12-34-56',
+                '12345678',
+                'Sensitive payout information',
             ]);
 
         $audit = AuditLog::query()->where('action', 'payout_profile.details_revealed')->latest('id')->first();
@@ -353,13 +365,56 @@ class MemberPayoutProfileTest extends TestCase
         $payload = json_encode([$audit->before, $audit->after, $audit->context]);
         $this->assertStringNotContainsString('12345678', (string) $payload);
         $this->assertStringNotContainsString('12-34-56', (string) $payload);
+        $this->assertStringNotContainsString('Alex Example', (string) $payload);
         $this->assertStringContainsString('Processing approved reward payout', (string) $payload);
+        $this->assertSame('ambassador_admin', data_get($audit->context, 'source'));
     }
 
-    public function test_reward_resource_shows_preferred_payout_method(): void
+    public function test_reward_and_ambassador_reveal_paths_share_secure_behaviour(): void
     {
-        [$user, $profile] = $this->makeVerifiedMember();
-        MemberPayoutProfile::factory()->forProfile($profile)->paypal('pay@example.com')->create();
+        [, $profile] = $this->makeVerifiedMember();
+        MemberPayoutProfile::factory()->forProfile($profile)->bankTransfer(
+            holder: 'Alex Example',
+            sortCode: '12-34-56',
+            accountNumber: '12345678',
+        )->create();
+
+        $reward = Reward::factory()->create([
+            'ambassador_profile_id' => $profile->id,
+            'status' => 'approved',
+            'approved_at' => now(),
+            'amount_minor' => 5000,
+        ]);
+
+        $admin = $this->makePanelUser(Role::Admin);
+        $this->actingAs($admin);
+
+        Livewire::test(ViewReward::class, ['record' => $reward->id])
+            ->assertOk()
+            ->assertActionVisible('revealPayoutDetails')
+            ->callAction('revealPayoutDetails', data: [
+                'reason' => 'Manual bank transfer for approved reward',
+                'password' => self::PASSWORD,
+            ])
+            ->assertActionMounted(RevealPayoutDetailsActionFactory::SHOW_ACTION)
+            ->assertMountedActionModalSee(['12345678', '12-34-56', 'Alex Example']);
+
+        $audit = AuditLog::query()->where('action', 'payout_profile.details_revealed')->latest('id')->first();
+        $this->assertNotNull($audit);
+        $this->assertSame('reward_admin', data_get($audit->context, 'source'));
+        $this->assertSame($reward->id, data_get($audit->context, 'reward_id'));
+        $payload = json_encode($audit->context);
+        $this->assertStringNotContainsString('12345678', (string) $payload);
+    }
+
+    public function test_normal_admin_views_expose_only_masked_details(): void
+    {
+        [, $profile] = $this->makeVerifiedMember();
+        MemberPayoutProfile::factory()->forProfile($profile)->bankTransfer(
+            holder: 'Alex Example',
+            sortCode: '12-34-56',
+            accountNumber: '12345678',
+        )->create();
 
         $reward = Reward::factory()->create([
             'ambassador_profile_id' => $profile->id,
@@ -373,11 +428,22 @@ class MemberPayoutProfileTest extends TestCase
 
         $this->get(RewardResource::getUrl('view', ['record' => $reward]))
             ->assertOk()
-            ->assertSeeText('Preferred payout method')
-            ->assertSeeText('PayPal')
+            ->assertSeeText('Payout method')
+            ->assertSeeText('Bank Transfer')
             ->assertSeeText('Configured')
             ->assertSeeText('Yes')
-            ->assertSeeText('pay@example.com');
+            ->assertSeeText('****5678')
+            ->assertDontSee('12345678')
+            ->assertDontSee('12-34-56')
+            ->assertDontSee('Alex Example');
+
+        $this->get(AmbassadorResource::getUrl('view', ['record' => $profile]))
+            ->assertOk()
+            ->assertSeeText('Payout preference')
+            ->assertSeeText('Bank Transfer')
+            ->assertSeeText('****5678')
+            ->assertDontSee('12345678')
+            ->assertDontSee('12-34-56');
     }
 
     public function test_reward_resource_warns_when_payout_not_configured(): void
@@ -397,6 +463,69 @@ class MemberPayoutProfileTest extends TestCase
             ->assertOk()
             ->assertSeeText('Not configured')
             ->assertSeeText('No payout method configured');
+    }
+
+    public function test_approved_reward_can_be_marked_paid_with_payment_metadata(): void
+    {
+        [, $profile] = $this->makeVerifiedMember();
+        MemberPayoutProfile::factory()->forProfile($profile)->bankTransfer()->create();
+
+        $reward = Reward::factory()->create([
+            'ambassador_profile_id' => $profile->id,
+            'status' => 'approved',
+            'approved_at' => now(),
+            'amount_minor' => 5000,
+        ]);
+
+        $admin = $this->makePanelUser(Role::Admin);
+
+        $ok = app(RewardsEngine::class)->markPaid(
+            $reward,
+            $admin,
+            'Paid via Faster Payments',
+            PayoutMethod::BankTransfer->value,
+            'FP-REF-1001',
+        );
+
+        $this->assertTrue($ok);
+        $reward->refresh();
+        $this->assertSame('paid', $reward->status);
+        $this->assertNotNull($reward->paid_at);
+        $this->assertSame($admin->id, $reward->paid_by_user_id);
+        $this->assertSame(PayoutMethod::BankTransfer->value, $reward->payment_method);
+        $this->assertSame('FP-REF-1001', $reward->payment_reference);
+        $this->assertSame('Paid via Faster Payments', $reward->note);
+        $this->assertTrue(AuditLog::query()->where('action', 'reward.paid')->exists());
+    }
+
+    public function test_mark_paid_action_on_reward_view_records_metadata(): void
+    {
+        [, $profile] = $this->makeVerifiedMember();
+        MemberPayoutProfile::factory()->forProfile($profile)->bankTransfer()->create();
+
+        $reward = Reward::factory()->create([
+            'ambassador_profile_id' => $profile->id,
+            'status' => 'approved',
+            'approved_at' => now(),
+            'amount_minor' => 5000,
+        ]);
+
+        $admin = $this->makePanelUser(Role::Admin);
+        $this->actingAs($admin);
+
+        Livewire::test(ViewReward::class, ['record' => $reward->id])
+            ->assertActionVisible('markPaid')
+            ->callAction('markPaid', data: [
+                'payment_reference' => 'BANK-99',
+                'note' => 'Sent manually',
+            ]);
+
+        $reward->refresh();
+        $this->assertSame('paid', $reward->status);
+        $this->assertSame(PayoutMethod::BankTransfer->value, $reward->payment_method);
+        $this->assertSame('BANK-99', $reward->payment_reference);
+        $this->assertSame('Sent manually', $reward->note);
+        $this->assertSame($admin->id, $reward->paid_by_user_id);
     }
 
     public function test_no_payout_details_are_stored_in_operations_metadata(): void
@@ -444,7 +573,6 @@ class MemberPayoutProfileTest extends TestCase
         Notification::assertSentTo($user, MissingPayoutMethodNotification::class);
         $this->assertNotNull($profile->fresh()->payout_prompt_sent_at);
 
-        // Second approval must not spam.
         $reward2 = Reward::factory()->create([
             'ambassador_profile_id' => $profile->id,
             'status' => 'pending_approval',
@@ -481,9 +609,8 @@ class MemberPayoutProfileTest extends TestCase
         $this->actingAs($admin)
             ->get(AmbassadorResource::getUrl('view', ['record' => $profile]))
             ->assertOk()
-            ->assertSeeText('Payout Details')
+            ->assertSeeText('Payout preference')
             ->assertSeeText('Bank Transfer')
-            ->assertSeeText('**-**-56')
             ->assertSeeText('****5678')
             ->assertDontSee('12345678');
     }

@@ -5,8 +5,9 @@ namespace App\Enums;
 /**
  * Preferred payout destination for a Rewards Member.
  *
- * Designed as a closed enum so new methods can be added later without
- * reshaping the MemberPayoutProfile storage model.
+ * Bank Transfer and Account Credit are offered to members.
+ * PayPal remains as a legacy enum value for historical rows only —
+ * it must not appear in new configuration UIs or validation options.
  */
 enum PayoutMethod: string
 {
@@ -31,16 +32,46 @@ enum PayoutMethod: string
         };
     }
 
+    public function isConfigurable(): bool
+    {
+        return match ($this) {
+            self::BankTransfer, self::AccountCredit => true,
+            self::PayPal => false,
+        };
+    }
+
+    /**
+     * Methods members may newly select / save.
+     *
+     * @return list<self>
+     */
+    public static function configurableCases(): array
+    {
+        return array_values(array_filter(
+            self::cases(),
+            fn (self $case) => $case->isConfigurable(),
+        ));
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function configurableOptions(): array
+    {
+        $out = [];
+        foreach (self::configurableCases() as $case) {
+            $out[$case->value] = $case->label();
+        }
+
+        return $out;
+    }
+
     /**
      * @return array<string, string>
      */
     public static function options(): array
     {
-        $out = [];
-        foreach (self::cases() as $case) {
-            $out[$case->value] = $case->label();
-        }
-
-        return $out;
+        // Prefer configurable options for any UI selection list.
+        return self::configurableOptions();
     }
 }

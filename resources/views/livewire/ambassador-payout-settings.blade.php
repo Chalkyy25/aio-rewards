@@ -22,15 +22,18 @@
                 <div>Payout method:
                     <strong data-testid="payout-current-method">{{ $currentMethodLabel }}</strong>
                 </div>
-                @if ($preferredMethod === 'bank_transfer')
+                @if ($currentMethodLabel === 'Bank Transfer')
                     <div data-testid="payout-masked-holder">Account holder: {{ $displayAccountHolder }}</div>
                     <div data-testid="payout-masked-sort">Sort code: {{ $maskedSortCode }}</div>
                     <div data-testid="payout-masked-account">Account number: {{ $maskedAccountNumber }}</div>
-                @elseif ($preferredMethod === 'paypal')
-                    <div data-testid="payout-paypal-email">PayPal: {{ $displayPayPalEmail }}</div>
+                @elseif ($isLegacyPayPal)
+                    <div data-testid="payout-paypal-email">PayPal (legacy): {{ $maskedPayPalEmail }}</div>
+                    <div style="color:#92400e;margin-top:.35rem" data-testid="payout-paypal-legacy-note">
+                        PayPal is no longer available. Please update to Bank Transfer or Account Credit.
+                    </div>
                 @else
                     <div data-testid="payout-account-credit-note">
-                        Approved rewards can be applied as account credit. No bank or PayPal details are stored.
+                        Approved rewards can be applied as account credit. No bank details are stored.
                     </div>
                 @endif
                 <div style="color:#64748b;margin-top:.35rem" data-testid="payout-last-updated">
@@ -46,7 +49,6 @@
                 style="width:100%;padding:.65rem;border:1px solid #cbd5e1;border-radius:.5rem;background:#fff">
             <option value="">Select a method…</option>
             <option value="bank_transfer">Bank Transfer</option>
-            <option value="paypal">PayPal</option>
             <option value="account_credit">Account Credit</option>
         </select>
         @error('preferredMethod')<div style="color:#dc2626;margin-top:.25rem;font-size:.85rem">{{ $message }}</div>@enderror
@@ -74,24 +76,15 @@
                 </label>
                 @error('accountNumber')<div style="color:#dc2626;margin-top:.25rem;font-size:.85rem">{{ $message }}</div>@enderror
             </div>
-        @elseif ($preferredMethod === 'paypal')
-            <div style="margin-top:1.25rem" data-testid="payout-paypal-fields">
-                <label style="display:block;font-weight:500;margin-bottom:.35rem">PayPal email address
-                    <input type="email" wire:model="paypalEmail" autocomplete="email"
-                           data-testid="input-paypal-email"
-                           style="width:100%;padding:.65rem;border:1px solid #cbd5e1;border-radius:.5rem;margin-top:.3rem">
-                </label>
-                @error('paypalEmail')<div style="color:#dc2626;margin-top:.25rem;font-size:.85rem">{{ $message }}</div>@enderror
-            </div>
         @elseif ($preferredMethod === 'account_credit')
             <div style="margin-top:1.25rem;background:#f8fafc;border-radius:.5rem;padding:1rem;color:#334155;font-size:.95rem"
                  data-testid="payout-credit-fields">
                 Approved rewards can be applied as account credit on your AIO Media services.
-                No bank or PayPal details are required for this option.
+                No bank details are required for this option.
             </div>
         @endif
 
-        @if ($preferredMethod === 'bank_transfer' || $preferredMethod === 'paypal' || ($preferredMethod === 'account_credit' && $hasSensitiveDestination))
+        @if ($preferredMethod === 'bank_transfer' || ($preferredMethod === 'account_credit' && ($hasSensitiveDestination || $isLegacyPayPal)))
             <div style="margin-top:1.25rem;background:#fef3c7;border-radius:.5rem;padding:1rem" data-testid="payout-password-panel">
                 <label style="display:block;font-weight:600;color:#92400e">Confirm your account password
                     <input type="password" wire:model="confirmPassword" autocomplete="current-password"

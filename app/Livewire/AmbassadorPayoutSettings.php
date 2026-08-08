@@ -24,8 +24,6 @@ class AmbassadorPayoutSettings extends Component
 
     public string $accountNumber = '';
 
-    public string $paypalEmail = '';
-
     public string $confirmPassword = '';
 
     public string $flash = '';
@@ -40,7 +38,7 @@ class AmbassadorPayoutSettings extends Component
 
     public string $maskedAccountNumber = '';
 
-    public string $displayPayPalEmail = '';
+    public string $maskedPayPalEmail = '';
 
     public string $displayAccountHolder = '';
 
@@ -49,6 +47,8 @@ class AmbassadorPayoutSettings extends Component
     public bool $isConfigured = false;
 
     public bool $hasSensitiveDestination = false;
+
+    public bool $isLegacyPayPal = false;
 
     public function mount(): void
     {
@@ -77,9 +77,6 @@ class AmbassadorPayoutSettings extends Component
             $this->sortCode = '';
             $this->accountNumber = '';
         }
-        if ($this->preferredMethod !== PayoutMethod::PayPal->value) {
-            $this->paypalEmail = '';
-        }
         $this->resetErrorBag();
     }
 
@@ -99,7 +96,6 @@ class AmbassadorPayoutSettings extends Component
                     'account_holder_name' => $this->accountHolderName,
                     'sort_code' => $this->sortCode,
                     'account_number' => $this->accountNumber,
-                    'paypal_email' => $this->paypalEmail,
                 ],
                 password: $password ?? $this->confirmPassword,
             );
@@ -117,7 +113,6 @@ class AmbassadorPayoutSettings extends Component
         $this->accountHolderName = '';
         $this->sortCode = '';
         $this->accountNumber = '';
-        $this->paypalEmail = '';
         $this->hydrateFromProfile($saved);
         $this->flash = 'Payout settings saved.';
         $this->flashKind = 'success';
@@ -129,7 +124,7 @@ class AmbassadorPayoutSettings extends Component
     private function rules(): array
     {
         $rules = [
-            'preferredMethod' => ['required', Rule::enum(PayoutMethod::class)],
+            'preferredMethod' => ['required', Rule::in(array_keys(PayoutMethod::configurableOptions()))],
         ];
 
         if ($this->preferredMethod === PayoutMethod::BankTransfer->value) {
@@ -137,12 +132,9 @@ class AmbassadorPayoutSettings extends Component
             $rules['sortCode'] = ['required', 'regex:/^\d{2}-?\d{2}-?\d{2}$/'];
             $rules['accountNumber'] = ['required', 'regex:/^\d{8}$/'];
             $rules['confirmPassword'] = ['required', 'string'];
-        } elseif ($this->preferredMethod === PayoutMethod::PayPal->value) {
-            $rules['paypalEmail'] = ['required', 'email', 'max:255'];
-            $rules['confirmPassword'] = ['required', 'string'];
         } elseif ($this->preferredMethod === PayoutMethod::AccountCredit->value) {
             // Password only required when clearing an existing sensitive destination.
-            if ($this->hasSensitiveDestination) {
+            if ($this->hasSensitiveDestination || $this->isLegacyPayPal) {
                 $rules['confirmPassword'] = ['required', 'string'];
             }
         }
@@ -158,24 +150,28 @@ class AmbassadorPayoutSettings extends Component
             $this->currentMethodLabel = '';
             $this->maskedSortCode = '';
             $this->maskedAccountNumber = '';
-            $this->displayPayPalEmail = '';
+            $this->maskedPayPalEmail = '';
             $this->displayAccountHolder = '';
             $this->lastUpdated = '';
             $this->isConfigured = false;
             $this->hasSensitiveDestination = false;
+            $this->isLegacyPayPal = false;
 
             return;
         }
 
         $this->profileId = $profile->id;
-        $this->preferredMethod = $profile->preferred_method->value;
+        $this->preferredMethod = $profile->preferred_method->isConfigurable()
+            ? $profile->preferred_method->value
+            : '';
         $this->currentMethodLabel = $profile->preferred_method->label();
         $this->isConfigured = $profile->isConfigured();
         $this->hasSensitiveDestination = $profile->preferred_method->storesSensitiveDestination();
+        $this->isLegacyPayPal = $profile->preferred_method === PayoutMethod::PayPal;
         $this->lastUpdated = optional($profile->updated_at)?->timezone(config('app.timezone'))->toDayDateTimeString() ?? '';
         $this->maskedSortCode = (string) ($profile->maskedSortCode() ?? '');
         $this->maskedAccountNumber = (string) ($profile->maskedAccountNumber() ?? '');
-        $this->displayPayPalEmail = (string) ($profile->paypal_email ?? '');
+        $this->maskedPayPalEmail = (string) ($profile->maskedPayPalEmail() ?? '');
         $this->displayAccountHolder = (string) ($profile->account_holder_name ?? '');
     }
 }

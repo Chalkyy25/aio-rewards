@@ -37,7 +37,7 @@ class MemberPayoutProfilePolicy
     }
 
     /**
-     * Full plaintext bank/PayPal destination reveal — Admin / Super Admin only.
+     * Full plaintext bank (or legacy PayPal) destination reveal — Admin / Super Admin only.
      * Support may see method + masked details, never the reveal action.
      */
     public function reveal(User $user, MemberPayoutProfile $profile): bool
